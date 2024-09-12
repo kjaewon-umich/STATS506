@@ -1,0 +1,306 @@
+---
+title: "HW 1-kjaewon"
+format: pdf
+editor: visual
+---
+
+# Problem 1 
+
+## a)
+
+```{r}
+wine <- read.csv("wine.data", header = FALSE)
+names(wine) <- c("class", "alcohol", "malic_acid", "ash", "alcalanity",
+                 "magnesium", "phenols", "flavaniods", "nonflavanoiids", 
+                 "proanthocyanins", "color_intensity", "hue", "od280", "proline")
+```
+
+## b)
+
+According to the "wine.names" file, there are 59 class 1 wines, 71 class 2 wines, and 48 class 3 wines.
+
+```{r}
+table(wine$class)
+```
+
+Thus, we can confirm that the number of wines within each class is correct as reported in "wine.names".
+
+## c)
+
+### 1.
+
+```{r}
+cor(wine$alcohol, wine$color_intensity)
+```
+From this we can derive that the correlation between alcohol content and color intensity is approximately 0.5464.
+
+### 2.
+
+```{r}
+class1_wines <- wine[which(wine$class == 1), ]
+class2_wines <- wine[which(wine$class == 2), ]
+class3_wines <- wine[which(wine$class == 3), ]
+```
+
+```{r}
+cor(class1_wines$alcohol, class1_wines$color_intensity)
+cor(class2_wines$alcohol, class2_wines$color_intensity)
+cor(class3_wines$alcohol, class3_wines$color_intensity)
+```
+Among wines, the class 1 wines have the highest correlation and class 3 wines have the lowest correlation between alcohol content and color intensity.
+
+### 3.
+
+```{r}
+max_color_intensity <- which(wine$color_intensity == max(wine$color_intensity))
+wine[max_color_intensity, "alcohol"]
+```
+From this, we can derive that the wine with the highest color intensity has the alcohol content of 14.34.
+
+### 4.
+
+```{r}
+higher_proanthocyanins <- which(wine$proanthocyanins > wine$ash)
+proportion_higher <- nrow(wine[higher_proanthocyanins, ]) / nrow(wine)
+proportion_higher
+```
+From this, we can derive that the percentage of wines had a higher content of proanthocyanins compare to ash is approximately 8.43%.
+
+## d)
+
+```{r}
+total_mean <- round(colMeans(wine[, -1]), 2)
+class1_mean <- round(colMeans(class1_wines[, -1]), 2)
+class2_mean <- round(colMeans(class2_wines[, -1]), 2)
+class3_mean <- round(colMeans(class3_wines[, -1]), 2)
+
+mean_report <- as.data.frame(rbind(total_mean, class1_mean, class2_mean, class3_mean))
+row.names(mean_report) <- c("Total", "Class 1", "Class 2", "Class 3")
+
+mean_report
+```
+
+## e)
+
+### Class 1 vs. Class 2
+
+$H_0$: There is no difference of phenols level between class 1 and class 2.  
+$H_A$: There is a difference of phenols level between class 1 and class 2.
+
+```{r}
+t.test(class1_wines$phenols, class2_wines$phenols)
+```
+Since p-value is lower than 0.05, we reject the null hypothesis at the 5% significance level. Thus, we conclude that there is a significant difference of phenols level between class 1 and class 2.  
+
+### Class 1 vs. Class 3
+
+$H_0$: There is no difference of phenols level between class 1 and class 3.  
+$H_A$: There is a difference of phenols level between class 1 and class 3.
+
+```{r}
+t.test(class1_wines$phenols, class3_wines$phenols)
+```
+Since p-value is lower than 0.05, we reject the null hypothesis at the 5% significance level. Thus, we conclude that there is a significant difference of phenols level between class 1 and class 3.  
+
+### Class 2 vs. Class 3
+
+$H_0$: There is no difference of phenols level between class 2 and class 3.  
+$H_A$: There is a difference of phenols level between class 2 and class 3.
+
+```{r}
+t.test(class2_wines$phenols, class3_wines$phenols)
+```
+Since p-value is lower than 0.05, we reject the null hypothesis at the 5% significance level. Thus, we conclude that there is a significant difference of phenols level between class 2 and class 3.  
+
+### Conclusion
+
+Therefore, we conclude that there are significant difference of phenols level across all three classes. 
+
+\newpage
+
+# Problem 2
+
+## a)
+
+```{r}
+survey <- read.csv("AskAManager.csv")
+```
+
+## b)
+
+```{r}
+survey <- survey[, -1]
+names(survey) <- c("Timestamp", "Age", "Industry", "Job Title", 
+                   "Job Context", "Annual Salary", "Bonus", 
+                   "Currency", "Other Currency", "Income Context", "Country",
+                   "State", "City", "Total Experience", 
+                   "Field Experience", "Highest Degree", "Gender",
+                   "Race")
+head(survey)
+```
+
+## c)
+
+```{r}
+nrow(survey)
+
+US_survey <- survey[which(survey$Currency == "USD"), ]
+nrow(US_survey)
+head(US_survey)
+```
+
+## d)
+
+```{r}
+# Convert Age to upper bound numeric values
+US_survey$`Age` <- as.numeric(gsub("\\D", "", US_survey$`Age`))
+
+# Convert experience ranges to upper bound numeric values
+US_survey$`Total Experience` <- as.numeric(gsub("\\D", "", US_survey$`Total Experience`))
+US_survey$`Field Experience` <- as.numeric(gsub("\\D", "", US_survey$`Field Experience`))
+
+# Filter rows where experience is impossible (experience > age - 18)
+valid_survey <- US_survey[which((US_survey$`Total Experience` <= (US_survey$`Age` - 18)) & 
+                             (US_survey$`Field Experience` <= (US_survey$`Age` - 18))), ]
+
+# Confirm the number of valid observations
+nrow(valid_survey)
+```
+
+## e)
+
+According to the 2021 U.S. Census Bureau income statistics, the median U.S. household income is \$70,784. For the lower bound, data points below the poverty threshold (\$12,880) could be considered as data to be eliminated as it is unrealistic for a full-time worker. For the upper bound, we can delete extremely high salaries over \$10,000,000.
+
+```{r}
+# Adjusting the upper bound of dataset
+realistic_survey = valid_survey[-which(valid_survey$`Annual Salary` > 10000000), ]
+
+# Adjusting the lower bound of dataset
+realistic_survey = valid_survey[-which(valid_survey$`Annual Salary` < 10000), ]
+
+# Number of Observations
+nrow(realistic_survey)
+```
+
+After going through data cleansing, we have 23,180 observations left.
+  
+Source: https://www.census.gov/library/publications/2022/demo/p60-276.html 
+
+\newpage
+ 
+# Problem 3
+
+## a)
+
+```{r}
+#' Check if a number is palindromic
+#'
+#' This function checks if a given positive integer is a palindrome.
+#' It also returns the reversed version of the input number.
+#' 
+#' @param x A positive integer
+#' @return A list with two elements:
+#'  - isPalindromic: A logical value indicating if the input is a palindrome.
+#'  - reversed: The input number with its digits reversed.
+#' @throws An error if the input is not a positive integer
+#' @examples
+#' isPalindromic(121) # returns TRUE, reversed = 121
+#' isPalindromic(123) # returns FALSE, reversed = 321
+#' @export
+isPalindromic <- function(x) {
+  # Input validation: Ensure input is a positive integer
+  if (!is.numeric(x) || x <= 0 || floor(x) != x) {
+    stop("Error: Input must be a positive integer.")
+  }
+
+  # Convert number to character to work with individual digits
+  x_str <- as.character(x)
+  
+  # Reverse the character representation
+  x_reversed_str <- paste0(rev(strsplit(x_str, "")[[1]]), collapse = "")
+  
+  # Convert the reversed string back to numeric
+  reversed_num <- as.numeric(x_reversed_str)
+  
+  # Check if the original number is the same as the reversed number
+  is_palindrome <- (x == reversed_num)
+  
+  # Return the result as a list
+  return(list("isPalindromic" = is_palindrome, "reversed" = reversed_num))
+}
+```
+
+```{r}
+isPalindromic(728827)
+```
+
+```{r}
+isPalindromic(39951)
+```
+
+## b)
+
+```{r}
+#' Find the Next Palindromic Number
+#'
+#' This function finds the next palindromic number for a given positive integer. 
+#' It starts at the given number and searches forward until it finds a palindrome.
+#'
+#' @param x A positive integer.
+#' @return A single integer representing the next palindromic number.
+#' @throws An error if the input is not a positive integer.
+#' @examples
+#' nextPalindrome(123)   # returns 131, which is the next palindromic number after 123
+#' nextPalindrome(9999)  # returns 10001, the next palindrome after 9999
+#' nextPalindrome(1)     # returns 2, the next palindromic number after 1
+#' 
+#' @export
+
+nextPalindrome <- function(x) {
+  if (!is.numeric(x) || x <= 0 || floor(x) != x) {
+    stop("Error: Input must be a positive integer.")
+  }
+  
+  y <- x + 1
+  while (x < Inf) {
+    result <- isPalindromic(y)
+    if (result$isPalindromic) {
+      return(y)
+    } else {
+      y <- y + 1
+    }
+  }
+}
+```
+
+## c)
+
+### 1)
+
+```{r}
+nextPalindrome(391)
+```
+
+### 2)
+
+```{r}
+nextPalindrome(9928)
+```
+
+### 3)
+
+```{r}
+nextPalindrome(19272719)
+```
+
+### 4)
+
+```{r}
+nextPalindrome(109)
+```
+
+### 5)
+
+```{r}
+nextPalindrome(2)
+```
