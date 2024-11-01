@@ -1,0 +1,313 @@
+---
+title: "STATS 506 HW 4-kjaewon"
+format: pdf
+editor: visual
+header-includes:
+  - \usepackage{xcolor}
+  - \usepackage{amsmath}
+---
+
+Github Repository: https://github.com/kjaewon-umich/STATS506
+
+```{r, echo=FALSE}
+Sys.setenv(LANG = "en")
+```
+
+# Problem 1
+
+## Setup
+
+```{r, message=FALSE}
+library(tidyverse)
+library(nycflights13)
+```
+
+## a.
+
+```{r}
+# Delay for Departure
+departure <- flights %>%
+ group_by(origin) %>%
+ summarize(
+   avg_delay = round(mean(dep_delay, na.rm = TRUE), 2),
+   med_delay = round(median(dep_delay, na.rm = TRUE), 2),
+   flights_num = n()
+   ) %>%
+ ungroup() %>%
+ filter(flights_num > 10) %>%
+ rename(faa = origin) %>%
+ left_join(airports, by = "faa") %>%
+ select(name, avg_delay, med_delay) %>%
+ arrange(desc(avg_delay))
+
+departure
+```
+
+```{r}
+# Delay for Arrival
+arrival <- flights%>%
+ group_by(dest) %>%
+ summarize(
+   avg_delay = round(mean(arr_delay, na.rm= TRUE), 2),
+   med_delay = round(median(arr_delay,na.rm=TRUE), 2),
+   flights_num = n()
+   )%>%
+ ungroup() %>%
+ filter(flights_num > 10) %>%
+ rename(faa = dest) %>%
+ left_join(airports, by = "faa") %>%
+ mutate(airport_name = coalesce(name, faa)) %>%
+ select(airport_name, avg_delay, med_delay)%>%
+ arrange(desc(avg_delay)) 
+
+arrival
+```
+
+## b.
+
+```{r}
+# Fastest Average Speed Take
+avg_speed <- flights %>%
+  left_join(planes, by= "tailnum")%>%
+  mutate(time = air_time/60, mph = distance/time) %>%
+  group_by(model) %>%
+  summarize(avg_mph = round(mean(mph, na.rm = TRUE), 2), flights_num = n()) %>%
+  arrange(desc(avg_mph)) %>%
+  slice(1)
+
+avg_speed
+```
+
+# Problem 2.
+
+## Setup
+
+```{r}
+nmmaps <- read.csv("chicago-nmmaps.csv", header = TRUE)
+```
+
+## Function
+
+```{r}
+#' Get average monthly temperature
+#'
+#' This function retrieves the average monthly temperature for a specified 
+#' month and year.
+#' @param month Numeric or string indicating the month (e.g., 1, 4, "Jan", "April")
+#' @param year Numeric year, must be within available data range
+#' @param data Data set containing `month_numeric`, `year`, and `temp` columns
+#' @param average_fcn Function to compute the average, default is `mean`
+#' @param celsius Logical, if TRUE returns temperature in Celsius, default 
+#' is FALSE (Fahrenheit)
+#' @return Average temperature as a numeric value
+
+get_temp <- function(month, year, data, average_fcn = mean, celsius = FALSE) {
+  # Validate `month` parameter
+  if (month %>% is.numeric) {
+    # Check whether `month` is numeric
+    if (month < 1 | month > 12) {
+      stop("Invalid `month`")
+    }
+  } else if (month %>% is.character) {
+    # Check whether `month` is a string 
+    months <- c("January", "February", "March", "April", "May", "June", 
+                "July", "August", "September", "October", "November", "December")
+    # Use `match.arg` to handle abbrevation cases
+    month %>%
+    match.arg(months) %>%
+    `==`(months) %>%
+    which -> month
+  } else {
+    stop("`month` must be numeric or character.")
+  }
+  
+  # Validate `year` parameter
+  if (!year %>% is.numeric) {
+    stop("`year` must be numeric.")
+  }
+  if (year < 1997 | year > 2000) {
+    stop("`year` out of range")
+  }
+  
+  # Validate `average_fcn` parameter
+  if (!(average_fcn %>% is.function)) {
+    stop("`average_fcn` must be a function")
+  }
+
+  # Process and calculate the average temperature
+  result <- data %>%
+    select(temp, month_numeric, year) %>%
+    rename(year_col = year) %>% # Rename to avoid conflict with input `year`
+    filter(year_col == year, month_numeric == month) %>%
+    summarize(avg_tmp = average_fcn(temp)) %>%
+    mutate(avg_tmp = ifelse(celsius, 5/9 * (avg_tmp - 32), avg_tmp)) %>%
+    pull(avg_tmp)  # Extract numeric result
+
+  return(result)
+}
+```
+
+## Test Cases
+
+```{r, error=TRUE}
+get_temp("Apr", 1999, data = nmmaps)
+get_temp("Apr", 1999, data = nmmaps, celsius = TRUE)
+get_temp(10, 1998, data = nmmaps, average_fcn = median)
+get_temp(13, 1998, data = nmmaps)
+get_temp(2, 2005, data = nmmaps)
+get_temp("November", 1999, data = nmmaps, celsius = TRUE,
+         average_fcn = function(x) {
+           x %>% sort -> x
+           x[2:(length(x) - 1)] %>% mean %>% return
+         })
+```
+
+# Problem 3.
+
+## Setup
+
+```{r, message=FALSE}
+library(ggplot2)
+artsales <- read.csv("df_for_ml_improved_new_market.csv", header = TRUE)
+```
+
+## a.
+
+```{r, message = FALSE, out.height="70%", out.width="70%"}
+price_trend <- artsales %>%
+  group_by(year) %>%
+  summarize(
+    mean_estimate_min = mean(estimate_min_usd, na.rm = TRUE),
+    mean_estimate_max = mean(estimate_max_usd, na.rm = TRUE),
+    mean_estimate_center = mean(estimate_center_usd, na.rm = TRUE)
+  )
+
+ggplot(price_trend, aes(x = year)) +
+  geom_line(aes(y = mean_estimate_min, color = "Min Estimate")) +
+  geom_line(aes(y = mean_estimate_max, color = "Max Estimate")) +
+  geom_line(aes(y = mean_estimate_center, color = "Center Estimate")) +
+  geom_smooth(
+    aes(y = mean_estimate_center), 
+        method = "loess", 
+        color = "blue", 
+        linetype = "dashed") +
+  labs(
+    title = "Trend in Art Sales Prices Over Time",
+    x = "Year",
+    y = "Mean Price in USD",
+    color = "Price Type"
+  ) +
+  theme_minimal()
+```
+
+To analyze art price trends over time, grouping artworks by year and calculating the mean values of the center, maximum, and minimum estimates offers a reasonable proxy for annual trends, given the absence of exact prices in USD for each piece. This approach highlights the overall trend in art prices.
+  
+Looking at the plot, there is a consistent upward trend in art prices from 1996 to 2008, suggesting an increase in market value or demand. The decline after 2008 aligns with economic conditions and implies market sensitivity to financial crisis. The recovery by 2011 suggests resilience in the art market, likely due to renewed interest and stabilized economy. This trend might underscore the impact of economic factors in art sales.
+  
+This visualization effectively captures the cyclical nature of art prices, showing both the impact of economic conditions and shifts in market demand over time.
+
+## b.
+
+```{r, out.height="70%", out.width="70%"}
+genre_trend <- artsales %>%
+  mutate(across(starts_with("Tier"), as.factor)) %>% 
+  pivot_longer(
+    cols = starts_with("Tier"),
+    names_to = "tier_level",
+    values_to = "tier"
+  ) %>%
+  filter(tier == 1) %>%  # Keep rows where the tier is active (1)
+  group_by(year, tier_level) %>%
+  summarize(
+    count = n(), 
+    .groups = "drop"
+  )
+
+# Plot the genre distribution across years
+ggplot(genre_trend, aes(x = year, y = count, color = tier_level)) +
+  geom_line() +
+  labs(
+    title = "Trend of Auction House Tiers Across Years",
+    x = "Year",
+    y = "Count of Sales",
+    color = "Tier Level"
+  ) +
+  theme_minimal()
+```
+
+```{r, out.height="70%", out.width="70%"}
+# Summarize the distribution of each tier's sales count across years
+tier_distribution <- genre_trend %>%
+  group_by(tier_level) %>%
+  summarize(
+    mean_count = mean(count),
+    median_count = median(count),
+    sd_count = sd(count),
+    iqr_count = IQR(count),
+    .groups = "drop"
+  )
+
+# Print distribution summary table
+print(tier_distribution)
+
+ggplot(genre_trend, aes(x = tier_level, y = count, fill = tier_level)) +
+  geom_boxplot() +
+  labs(
+    title = "Distribution of Auction House Tiers Across Years",
+    x = "Tier Level",
+    y = "Count of Sales"
+  ) +
+  theme_minimal()
+```
+
+Since there is no explicit variable indicating the genre of artwork, we used tier variables as proxies to estimate genre trends. According to the author's publication, tier variables represent the levels of auction houses. (https://www.nature.com/articles/s41598-024-60957-z#Abs1). Thus, we assume that different tiers of auction houses might deal with distinct genres.
+  
+Looking at the first plot, we can observe an upward trend in sales counts for all tiers over time, with Tier 4 showing the most fluctuation, especially around 2008. Tier 2 shows steady increases with fewer spikes, suggesting consistency in auction volumes. Tier 3 displays moderate fluctuation, lying between Tiers 2 and 4 in variability.
+  
+In the second plot, which illustrates distribution, Tier 4 again stands out for its higher interquartile range (IQR) and prominent outliers, indicating substantial variability. Tier 2, with a more compact IQR and minimal outliers, reinforces the pattern of stability seen in the first plot.
+  
+These patterns showcase that Tier 4 auctions is more sensitive to market conditions, while lower tiers may reflect more stable segments. We might be able to assume that Tier 4 auctions handle higher-value or more diverse artworks than the other tiers. 
+  
+Although these insights are valuable, it is essential to note that the assumption that genre aligns with auction house tiers may not fully capture the specific nuances of genre distribution.
+
+## c.
+
+```{r, warning = FALSE, out.height="70%", out.width="70%"}
+genre_price_trend <- artsales %>%
+  mutate(across(starts_with("Tier"), as.factor)) %>% 
+  pivot_longer(
+    cols = starts_with("Tier"),
+    names_to = "tier_level",
+    values_to = "tier"
+  ) %>%
+  filter(tier == 1) %>%  # Keep rows where the tier is active (1)
+  group_by(year, tier_level) %>%
+  summarize(
+    mean_estimate_min = mean(estimate_min_usd, na.rm = TRUE),
+    mean_estimate_max = mean(estimate_max_usd, na.rm = TRUE),
+    mean_estimate_center = mean(estimate_center_usd, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(genre_price_trend, aes(x = year)) +
+  geom_line(aes(y = mean_estimate_min, color = "Min Estimate"), size = 1) +
+  geom_line(aes(y = mean_estimate_max, color = "Max Estimate"), size = 1) +
+  geom_line(aes(y = mean_estimate_center, color = "Center Estimate"), size = 1) +
+  labs(
+    title = "Price Trends in Art Sales by Auction House Tier",
+    x = "Year",
+    y = "Mean Price in USD",
+    color = "Estimate Type"
+  ) +
+  theme_minimal() +
+  facet_wrap(~ tier_level, ncol = 1) +
+  scale_color_manual(values = c("Min Estimate" = "blue", 
+                                "Max Estimate" = "green", 
+                                "Center Estimate" = "red"))
+```
+
+Since there is no explicit variable indicating the genre of artwork, we used auction house tiers as proxies to infer genre trends. According to the author's paper (https://www.nature.com/articles/s41598-024-60957-z#Abs1), these tiers represent different levels of auction houses. We assume that various tiers may specialize in distinct genres.
+   
+Looking at the plots, Tier 2 showcases relatively stable trends, with moderate peaks around 2008 and a smoother recovery post-2008. This suggests a steady market with less susceptibility to economic shifts. Tier 3, while somewhat stable, has more visible fluctuations before and after 2008, indicating a moderate sensitivity to market conditions. Tier 4 displays the greatest variability, with sharp peaks and declines, particularly around 2008, suggesting exposure to a broader market spectrum, possibly including high-value sales affected by economic factors. These patterns imply that higher-tier auction houses may engage in a more volatile art market segment, while lower tiers offer stability through consistent niches.
+  
+These inferences are based on the assumed correlation between auction tiers and genre, which might not capture all genre-specific nuances. However, the plots visually demonstrates that sales prices and trends vary across tiers, aligning with expected market behaviors for different tiers of auction houses.
