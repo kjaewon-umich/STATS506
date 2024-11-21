@@ -1,0 +1,544 @@
+---
+title: "STATS 506 HW 5-kjaewon"
+format: 
+  html:
+    embed-resources: true
+editor: visual
+---
+
+Github Repository: https://github.com/kjaewon-umich/STATS506
+
+```{r, echo=FALSE}
+Sys.setenv(LANG = "en")
+Sys.setenv(PATH = paste("C:/rtools44/usr/bin", Sys.getenv("PATH"), sep=";"))
+```
+
+# Problem 1.
+
+## Setup
+
+```{r, message=FALSE}
+library(Rcpp)
+```
+
+## a.
+
+```{r}
+#' Rational Number Class
+#'
+#' An S4 class to represent a rational number with a numerator and denominator.
+#'
+#' @slot numerator An integer representing the numerator of the rational number.
+#' @slot denominator An integer representing the denominator of the rational number.
+#' @prototype A rational number with numerator `1L` and denominator `1L`.
+#' @validity Ensures that the denominator is not zero.
+#'
+#' @examples
+#' r <- rational(3, 4)
+#' show(r)
+setClass(
+  "rational",
+  slots = c(numerator = "integer", denominator = "integer"),
+  prototype = list(numerator = 1L, denominator = 1L),
+  validity = function(object) {
+    if (object@denominator == 0L) {
+      return("Denominator cannot be zero.")
+    }
+    TRUE
+  }
+)
+
+#' Rational Number Constructor
+#'
+#' Creates an instance of the `rational` class.
+#'
+#' @param numerator An integer for the numerator. Defaults to `1L`.
+#' @param denominator An integer for the denominator. Defaults to `1L`.
+#'
+#' @return A `rational` object.
+#' @examples
+#' r <- rational(3, 4)
+#' show(r)
+rational <- function(numerator = 1L, denominator = 1L) {
+  new("rational", numerator = as.integer(numerator), 
+      denominator = as.integer(denominator))
+}
+
+#' Compute GCD and LCM
+#'
+#' Functions to compute the greatest common divisor (GCD) and least common 
+#' multiple (LCM).
+#'
+#' @param a An integer.
+#' @param b An integer.
+#'
+#' @return The GCD or LCM of `a` and `b`.
+#' @examples
+#' gcd(12, 15)  # Output: 3
+#' lcm(12, 15)  # Output: 60
+cppFunction('
+int gcd(int a, int b) {
+  while (b != 0) {
+    int temp = b;
+    b = a % b;
+    a = temp;
+  }
+  return std::abs(a);
+}
+
+int lcm(int a, int b) {
+  return std::abs(a * b) / gcd(a, b);  // LCM formula using GCD
+}
+')
+
+
+#' Simplify a Rational Number
+#'
+#' A method to simplify a `rational` object by reducing the numerator and 
+#' denominator by their GCD.
+#'
+#' @param x A `rational` object.
+#'
+#' @return A simplified `rational` object.
+#' @examples
+#' r <- rational(6, 8)
+#' simplify(r)  # Output: 3/4
+setGeneric("simplify", function(x) standardGeneric("simplify"))
+
+# Define the simplify method for rational objects
+setMethod("simplify", "rational", function(x) {
+  divisor <- gcd(x@numerator, x@denominator)
+  x@numerator <- as.integer(x@numerator / divisor)
+  x@denominator <- as.integer(x@denominator / divisor)
+  
+  # Ensure the denominator is positive
+  if (x@denominator < 0) {
+    x@numerator <- as.integer(-x@numerator)
+    x@denominator <- as.integer(-x@denominator)
+  }
+  x
+})
+
+#' Display a Rational Number
+#'
+#' A method to print a `rational` object in the format `numerator/denominator`.
+#'
+#' @param object A `rational` object.
+#'
+#' @examples
+#' r <- rational(5, 10)
+#' show(r)  # Output: 1/2
+setMethod("show", "rational", function(object) {
+  object <- simplify(object)
+  cat(object@numerator, "/", object@denominator, "\n")
+})
+
+#' Compute Quotient of a Rational Number
+#'
+#' A method to compute the floating-point value of a `rational` object.
+#'
+#' @param x A `rational` object.
+#' @param digits An optional integer specifying the number of decimal places to 
+#' round to.
+#'
+#' @return A numeric value representing the quotient.
+#' @examples
+#' r <- rational(1, 3)
+#' quotient(r)         # Output: 0.3333...
+#' quotient(r, digits = 2)  # Output: 0.33
+setGeneric("quotient", function(x, digits = NULL) standardGeneric("quotient"))
+
+# Update the quotient method for rational objects with rounding
+setMethod("quotient", "rational", function(x, digits = NULL) {
+  result <- x@numerator / x@denominator
+  if (!is.null(digits)) {
+    result <- round(result, digits)
+  }
+  result
+})
+
+#' Arithmetic Operations for Rational Numbers
+#'
+#' Methods for addition, subtraction, multiplication, and division of `rational` 
+#' objects.
+#'
+#' @param e1 A `rational` object.
+#' @param e2 A `rational` object.
+#'
+#' @return A new `rational` object representing the result.
+#' @examples
+#' r1 <- rational(1, 3)
+#' r2 <- rational(1, 6)
+#' r1 + r2  # Output: 1/2
+#' r1 - r2  # Output: 1/6
+#' r1 * r2  # Output: 1/18
+#' r1 / r2  # Output: 2
+setMethod("+", c("rational", "rational"), function(e1, e2) {
+  common_denominator <- e1@denominator * e2@denominator
+  new_numerator <- e1@numerator * e2@denominator + e2@numerator * e1@denominator
+  simplify(rational(new_numerator, common_denominator))
+})
+
+# Define subtraction for two rational objects
+setMethod("-", c("rational", "rational"), function(e1, e2) {
+  common_denominator <- e1@denominator * e2@denominator
+  new_numerator <- e1@numerator * e2@denominator - e2@numerator * e1@denominator
+  simplify(rational(new_numerator, common_denominator))
+})
+
+setMethod("*", c("rational", "rational"), function(e1, e2) {
+  new_numerator <- e1@numerator * e2@numerator
+  new_denominator <- e1@denominator * e2@denominator
+  simplify(rational(new_numerator, new_denominator))
+})
+
+# Define division for two rational objects
+setMethod("/", c("rational", "rational"), function(e1, e2) {
+  new_numerator <- e1@numerator * e2@denominator
+  new_denominator <- e1@denominator * e2@numerator
+  simplify(rational(new_numerator, new_denominator))
+})
+```
+
+## b.
+
+```{r}
+# Testing the class with given test cases
+r1 <- rational(24, 6)
+r2 <- rational(7, 230)
+r3 <- rational(0, 4)
+```
+
+```{r, error=TRUE}
+r1
+r3
+r1 + r2
+r1 - r2
+r1 * r2
+r1 / r2
+r1 + r3
+r1 * r3
+r2 / r3
+quotient(r1)
+quotient(r2)
+quotient(r2, digits = 3)
+quotient(r2, digits = 3.14)
+quotient(r2, digits = "avocado")
+q2 <- quotient(r2, digits = 3)
+q2
+quotient(r3)
+simplify(r1)
+simplify(r2)
+simplify(r3)
+```
+
+## c.
+
+```{r, error=TRUE}
+#' Rational Number Class
+#'
+#' An S4 class to represent a rational number with enhanced validation for 
+#' the numerator and denominator.
+#'
+#' @slot numerator An integer representing the numerator of the rational number.
+#' @slot denominator An integer representing the denominator of the rational number.
+#' @prototype A rational number with numerator `1L` and denominator `1L`.
+#' @validity Ensures that:
+#'   - The denominator is not zero.
+#'   - Neither the numerator nor the denominator is `NA`.
+#'   - Both numerator and denominator are integers.
+#'
+#' @examples
+#' # Create a valid rational number
+#' r <- rational(3, 4)
+#' r
+#'
+#' # Attempt to create invalid rational numbers
+#' try(rational(3, 0))   # Denominator cannot be zero
+#' try(rational(NA, 5))  # Numerator cannot be NA
+#' try(rational(5.5, 2)) # Numerator must be an integer
+#'
+setClass(
+  "rational",
+  slots = c(numerator = "integer", denominator = "integer"),
+  prototype = list(numerator = 1L, denominator = 1L),
+  validity = function(object) {
+    if (object@denominator == 0L) {
+      return("Denominator cannot be zero.")
+    }
+    if (is.na(object@numerator) || is.na(object@denominator)) {
+      return("Numerator or denominator cannot be NA.")
+    }
+    if (!is.integer(object@numerator) || !is.integer(object@denominator)) {
+      return("Numerator and denominator must be integers.")
+    }
+    TRUE
+  }
+)
+
+#' Rational Number Class
+#'
+#' An S4 class to represent a rational number with enhanced validation for 
+#' the numerator and denominator.
+#'
+#' @slot numerator An integer representing the numerator of the rational number.
+#' @slot denominator An integer representing the denominator of the rational number.
+#' @prototype A rational number with numerator `1L` and denominator `1L`.
+#' @validity Ensures that:
+#'   - The denominator is not zero.
+#'   - Neither the numerator nor the denominator is `NA`.
+#'   - Both numerator and denominator are integers.
+#'
+#' @examples
+#' # Create a valid rational number
+#' r <- rational(3, 4)
+#' r
+#'
+#' # Attempt to create invalid rational numbers
+#' try(rational(3, 0))   # Denominator cannot be zero
+#' try(rational(NA, 5))  # Numerator cannot be NA
+#' try(rational(5.5, 2)) # Numerator must be an integer
+#'
+rational <- function(numerator = 1L, denominator = 1L) {
+  if (!is.integer(numerator)) numerator <- as.integer(numerator)
+  if (!is.integer(denominator)) denominator <- as.integer(denominator)
+  new("rational", numerator = numerator, denominator = denominator)
+}
+
+# Test Cases
+try(rational(1, 0))         # Invalid: denominator is zero
+try(rational(1, NA))        # Invalid: denominator is NA
+try(rational(NA, 1))        # Invalid: numerator is NA
+try(rational("1", 2))       # Invalid: numerator is a string
+try(rational(1.5, 2))       # Invalid: numerator is a float
+
+# Valid Input
+r4 <- rational(3, 4)
+r4
+```
+
+
+# Problem 2.
+
+## Setup
+
+```{r, message=FALSE}
+library(tidyverse)
+library(plotly)
+art <- read.csv("df_for_ml_improved_new_market.csv", header = TRUE)
+```
+
+## a.
+
+From Problem Set 4, we observed that the distribution of art sales genres appears to change across years. To better visualize this trend, we preprocess the data using tidyverse to calculate the proportion of each genre for every year.
+
+```{r}
+# Data Preparation
+art$Genre___Others[art$Genre___Painting == 1] <- 0
+art$genre <- "Photography"  # Default genre
+art$genre[art$Genre___Print == 1] <- "Print"
+art$genre[art$Genre___Sculpture == 1] <- "Sculpture"
+art$genre[art$Genre___Painting == 1] <- "Painting"
+art$genre[art$Genre___Others == 1] <- "Other"
+
+# Create proportions by year and genre
+yeargenre <- with(art, table(year, genre))
+ygperc <- yeargenre / rowSums(yeargenre)
+ygpercm <- as.data.frame(as.table(ygperc))
+colnames(ygpercm) <- c("year", "genre", "proportion")
+
+# Ensure genres are factors with the correct order
+ygpercm$genre <- factor(ygpercm$genre, 
+                        levels = c("Painting", "Sculpture","Photography", 
+                                   "Print", "Other"))
+```
+
+To address this question, we utilize the interactive features of the ``plotly`` package. The interactive plot highlights the genre name and its proportion of the total sales volume for each year, allowing users to explore the changes in the distribution dynamically. 
+
+```{r}
+# Create Plotly Horizontal Stacked Bar Plot
+fig <- ygpercm %>%
+  plot_ly(
+    x = ~proportion,             # Proportion on the x-axis
+    y = ~year,                   # Year on the y-axis
+    color = ~genre,              # Color by genre
+    type = "bar",                # Bar plot type
+    orientation = "h",           # Horizontal orientation
+    text = ~paste(
+      "Genre:", genre, "<br>",
+      "Proportion:", round(proportion, 2)
+    ),                           # Custom tooltip
+    hoverinfo = "text"           # Display custom tooltip
+  ) %>%
+  layout(
+    barmode = "stack",           # Stack the bars
+    title = "Proportion of Genre of Art Sales",
+    xaxis = list(
+      title = "Proportion",
+      range = c(0, 1)            # Ensure proportions are bounded between 0 and 1
+    ),
+    yaxis = list(title = "Year"),
+    legend = list(title = list(text = "Genre"))
+  )
+
+# Add arrow and text for "Other"
+fig <- fig %>%
+  add_annotations(
+    x = 1.02, y = 15,            # Position of "Other" annotation
+    text = "Other",
+    showarrow = TRUE,
+    ax = -20, ay = 0,            # Adjust arrow length and angle
+    arrowhead = 2
+  )
+
+# Display the plot
+fig
+```
+
+From the visualization, we observe the following trends:
+
+- **Painting** shows the most significant decline over time.
+- **Sculpture**, **Photography**, and **Other** genres remain relatively stable.
+- **Print** exhibits a noticeable increase in its proportion starting around 2000.
+
+## b.
+
+From Problem Set 4, we observed a change in sales prices over time, with genre significantly influencing these trends. To better visualize this, we preprocess the data using tidyverse, calculating the median and 97.5th percentile prices by year and genre.
+
+```{r}
+# Data Preparation
+artmedian <- aggregate(art$price_usd, by = list(art$year, art$genre), 
+                       FUN = median, na.rm = TRUE)
+names(artmedian) <- c("year", "genre", "price_usd")
+
+art975 <- aggregate(art$price_usd, by = list(art$year, art$genre), 
+                    FUN = quantile, probs = 0.975, na.rm = TRUE)
+names(art975) <- c("year", "genre", "price_usd")
+
+# Combine median and 97.5th percentile
+artcombine <- bind_rows(
+  artmedian %>% mutate(measure = "Median"),
+  art975 %>% mutate(measure = "97.5%")
+)
+```
+
+To leverage ``plotly`` package's interactive features effectively, we highlight the price, genre, and year to provide detailed insights for each data point.
+
+```{r}
+# Create Interactive Plotly Plot
+fig2 <- artcombine %>%
+  plot_ly(
+    x = ~year,
+    y = ~price_usd,
+    color = ~genre,
+    linetype = ~measure,
+    type = "scatter",
+    mode = "lines",
+    text = ~paste(
+      "Year:", year, "<br>",
+      "Genre:", genre, "<br>",
+      "Measure:", measure, "<br>",
+      "Price (USD):", scales::comma(price_usd)
+    ),
+    hoverinfo = "text"
+  ) %>%
+  layout(
+    title = list(
+      text = "Changes in Sales Price by Genre Over Time",
+      font = list(size = 16, family = "Arial")
+    ),
+    xaxis = list(
+      title = "Year",
+      range = c(1997, 2012),
+      tickvals = seq(1997, 2012, 2),
+      showgrid = TRUE,
+      zeroline = FALSE
+    ),
+    yaxis = list(
+      title = "Price in Thousands USD",
+      tickvals = seq(0, 350000, 50000),
+      ticktext = paste0(seq(0, 350, 50), "k"),
+      showgrid = TRUE,
+      zeroline = TRUE
+    ),
+    legend = list(
+      title = list(text = "Genre and Measure"),
+      orientation = "v",  # Vertical orientation to avoid overlap
+      x = 1.1, y = 1,     # Position the legend outside the plot area
+      xanchor = "left",
+      yanchor = "top"
+    ),
+    margin = list(
+      l = 80, r = 120, b = 80, t = 80
+    )  # Add margins for cleaner spacing
+  )
+
+# Display the revised Plotly plot
+fig2
+```
+
+From the interactive visualization:
+
+- **Sculpture** shows a consistent upward trend throughout the period.
+- **Painting** exhibited a stable increase until 2007, followed by a sharp spike and a subsequent drastic decline.
+- **Photography** and **Print** exhibit significant fluctuations over time.
+- **Other** genres maintain a relatively stable trend with no notable changes from 2007.
+
+# Problem 3.
+
+## Setup
+
+```{r, message=FALSE}
+library(data.table)
+library(nycflights13)
+
+flights <- data.table(flights)
+planes <- data.table(planes)
+```
+
+## a.
+
+```{r}
+# Delay for Departure
+departure <- merge(flights[, faa := origin],
+                   airports,
+                   by = "faa",
+                   all.x = TRUE)
+departure[, .(N = .N,
+              avg_delay = mean(dep_delay, na.rm = TRUE),
+              med_delay = median(dep_delay, na.rm = TRUE)),
+          by = name] |>
+  _[N >= 10, !"N"] |>
+  _[order(avg_delay, decreasing = TRUE)]
+```
+
+```{r}
+# Delay for Arrival
+arrival <- merge(flights[, faa := dest],
+                 airports,
+                 by = "faa",
+                 all.x = TRUE)
+arrival[, .(name = ifelse(is.na(first(name)), first(faa), first(name)),
+            N = .N,
+            avg_delay = mean(arr_delay, na.rm = TRUE),
+            med_delay = median(arr_delay, na.rm = TRUE)),
+        by = faa] |>
+  _[N >= 10, !c("faa", "N")] |>
+  _[order(avg_delay, decreasing = TRUE)] |>
+  print(x = _, nrows = 10000)
+```
+
+
+## b.
+
+```{r}
+merged <- merge(flights,
+                planes,
+                by = "tailnum",
+                all.x = TRUE)
+
+avg_speed <- merged[, `:=`(flights_num = .N,
+                           avg_mph = mean(distance/(air_time/60), na.rm = TRUE)),
+                    by = model]
+avg_speed[avg_speed[, .I[which.max(avg_mph)]],.(model, avg_mph, flights_num)]
+```
