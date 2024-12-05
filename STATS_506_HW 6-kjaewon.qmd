@@ -1,0 +1,235 @@
+---
+title: "STATS 506 HW 6-kjaewon"
+format: pdf
+editor: visual
+---
+
+Github Repository: https://github.com/kjaewon-umich/STATS506
+
+```{r, echo=FALSE}
+Sys.setenv(LANG = "en")
+```
+
+# Problem 1.
+
+## Setup
+
+```{r, message=FALSE}
+library(DBI)
+library(RSQLite)
+library(dplyr)
+library(future)
+library(future.apply)
+library(parallel)
+library(microbenchmark)
+library(knitr)
+library(tidyverse)
+
+# Connect to the Lahman database
+db <- dbConnect(SQLite(), "lahman_1871-2022.sqlite")
+
+# Load and preprocess the Fielding table
+Fielding <- dbGetQuery(db, "SELECT * FROM Fielding") %>%
+  filter(InnOuts > 0) %>%  # Exclude rows with non-positive InnOuts
+  mutate(RF = 3 * (PO + A) / InnOuts) %>%  # Calculate Range Factor (RF)
+  filter(RF > 0, !is.na(RF), is.finite(RF)) %>%  # Remove invalid RF values
+  group_by(teamID) %>%
+  filter(n() >= 5, n_distinct(RF) > 1) %>%  # Ensure sufficient data per team
+  ungroup()
+
+on.exit(dbDisconnect(db))  # Ensure database disconnection on exit
+
+#' @title Stratified Bootstrap for Range Factor (RF)
+#' @description Performs stratified bootstrap sampling for Range Factor 
+#' estimation by team.
+#' @param data A data frame containing team-level Range Factor data.
+#' @param n_bootstrap The number of bootstrap samples to generate.
+#' @return A list of bootstrap samples, where each sample is a data frame with 
+#' team-level statistics.
+bootstrap_rf <- function(data, n_bootstrap) {
+  replicate(n_bootstrap, {
+    data %>%
+      group_by(teamID) %>%
+      sample_frac(size = 1, replace = TRUE) %>%  # Stratified sampling
+      summarize(avg_RF = mean(RF, na.rm = TRUE), .groups = "drop")
+  }, simplify = FALSE)
+}
+
+# For reproducibility of results
+set.seed(506)
+```
+
+## a.
+
+### 1) Without any parallel processing
+
+```{r, warning=FALSE}
+#' @title Sequential Stratified Bootstrapping
+#' @description Performs stratified bootstrap sampling sequentially.
+#' @param data A data frame containing team-level Range Factor data.
+#' @param n_bootstrap The number of bootstrap samples to generate.
+#' @return A data frame with team-level average RF and standard errors.
+sequential_bootstrap <- function(data, n_bootstrap) {
+  bootstrap_results <- bootstrap_rf(data, n_bootstrap)
+  combined_results <- bind_rows(bootstrap_results)
+  
+  # Group and summarize
+  result <- combined_results %>%
+  group_by(teamID) %>%
+  summarize(
+    se_RF = sd(avg_RF, na.rm = TRUE),
+    avg_RF = mean(avg_RF, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  select(teamID, avg_RF, se_RF)
+  
+  return(result)
+}
+
+# Perform sequential bootstrapping
+rf_summary_sequential <- sequential_bootstrap(Fielding, n_bootstrap = 1000)
+```
+
+### 2) Using the `parallel` package
+
+```{r, message=FALSE, warning=FALSE}
+#' @title Parallel Stratified Bootstrapping
+#' @description Performs stratified bootstrap sampling using the `parallel` 
+#' package.
+#' @param data A data frame containing team-level Range Factor data.
+#' @param n_bootstrap The number of bootstrap samples to generate.
+#' @param chunks The number of parallel workers.
+#' @return A data frame with team-level average RF and standard errors.
+parallel_bootstrap <- function(data, n_bootstrap, chunks) {
+  cl <- makeCluster(chunks)
+  on.exit(stopCluster(cl))  # Ensure cluster is stopped on exit
+  
+  clusterEvalQ(cl, library(dplyr))  # Load `dplyr` on each worker
+  clusterExport(cl, varlist = c("data", "bootstrap_rf"), envir = environment())
+  
+  # Split workload among workers
+  results <- parLapply(cl, seq_len(chunks), function(x) {
+    bootstrap_rf(data, n_bootstrap / chunks)
+  })
+  
+  bind_rows(do.call(c, results)) %>%  # Combine all results
+    group_by(teamID) %>%
+    summarize(
+      se_RF = sd(avg_RF, na.rm = TRUE),
+      avg_RF = mean(avg_RF, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    select(teamID, avg_RF, se_RF)
+}
+
+# Perform parallel bootstrapping
+rf_summary_parallel <- parallel_bootstrap(Fielding, n_bootstrap = 1000, chunks = 4)
+```
+
+### 3) Using the `future` package
+
+```{r, warning=FALSE}
+#' @title Future-Based Stratified Bootstrapping
+#' @description Performs stratified bootstrap sampling using the `future` 
+#' package.
+#' @param data A data frame containing team-level Range Factor data.
+#' @param n_bootstrap The number of bootstrap samples to generate.
+#' @param workers The number of parallel workers.
+#' @return A data frame with team-level average RF and standard errors.
+future_bootstrap <- function(data, n_bootstrap, workers) {
+  plan(multisession, workers = workers)
+  on.exit(plan(sequential))  # Reset future plan after execution
+  
+  results <- future_lapply(seq_len(n_bootstrap), function(x) {
+    bootstrap_rf(data, 1)
+  })
+  
+  bind_rows(results) %>%  # Combine all results
+    group_by(teamID) %>%
+    summarize(
+      se_RF = sd(avg_RF, na.rm = TRUE),
+      avg_RF = mean(avg_RF, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    select(teamID, avg_RF, se_RF)
+}
+
+# Perform future-based bootstrapping
+rf_summary_future <- future_bootstrap(Fielding, n_bootstrap = 1000, workers = 4)
+```
+
+### Benchmark
+
+```{r, warning=FALSE}
+#' @title Benchmarking Bootstrapping Methods
+#' @description Benchmarks the performance of sequential, parallel, and 
+#' future-based bootstrapping.
+#' @return A microbenchmark object with timing results.
+benchmark_bootstrap <- function(data, n_bootstrap, chunks, workers) {
+  microbenchmark(
+    # Use smaller number for speed
+    Sequential = sequential_bootstrap(data, n_bootstrap / 10),  
+    Parallel = parallel_bootstrap(data, n_bootstrap / 10, chunks),
+    Future = future_bootstrap(data, n_bootstrap / 10, workers),
+    times = 5
+  )
+}
+
+# Benchmark the methods
+benchmark_results <- benchmark_bootstrap(Fielding, n_bootstrap = 1000, 
+                                         chunks = 4, workers = 4)
+print(benchmark_results)
+```
+
+## b.
+
+```{r, warning=FALSE}
+# Function to extract the top 10 teams by avg_RF
+#' @title Extract Top Teams
+#' @description Extracts the teams with the 10 highest average Range Factors.
+#' @param summary A data frame with `teamID`, `avg_RF`, and `se_RF`.
+#' @return A data frame with the top 10 teams.
+extract_top_teams <- function(summary) {
+  summary %>%
+    arrange(desc(avg_RF)) %>%
+    slice_head(n = 10)  # Get the top 10 rows
+}
+
+# Extract the top 10 teams for each method
+top_teams_sequential <- extract_top_teams(rf_summary_sequential)
+top_teams_parallel <- extract_top_teams(rf_summary_parallel)
+top_teams_future <- extract_top_teams(rf_summary_future)
+
+# Combine the results into a single table
+#' @title Combine Top Teams Results
+#' @description Combines top 10 results from sequential, parallel, and 
+#' future-based approaches.
+combine_top_teams <- function(sequential, parallel, future) {
+  sequential <- sequential %>%
+    mutate(Method = "Sequential")
+  parallel <- parallel %>%
+    mutate(Method = "Parallel")
+  future <- future %>%
+    mutate(Method = "Future")
+  
+  bind_rows(sequential, parallel, future)
+}
+
+top_teams_combined <- combine_top_teams(
+  top_teams_sequential,
+  top_teams_parallel,
+  top_teams_future
+)
+
+# Display the table with teamID, avg_RF, se_RF, and Method
+kable(top_teams_combined, 
+      caption = "Top 10 Teams with Highest RF and Associated Statistics")
+```
+
+## c.
+
+From part b, we benchmarked three methods for bootstrapping: sequential, parallel (via ``parallel`` library), and future-based (via ``future`` library). The results showed that the sequential approach was the fastest on our current hardware compared to the parallel and future-based approaches, respectively.
+  
+The sequential method benefits from its simplicity and absence of parallelization overhead, making it ideal for small workloads like the one in this problem. However, for larger datasets or higher numbers of bootstrap samples (e.g., n_bootstrap > 10,000), the parallel and future-based methods might outperform sequential due to their ability to utilize multiple CPU cores.
+  
+Overall, the choice of method has to depend on the size of the task and the available hardware. Sequential is optimal for small datasets, while parallel and future methods are expected to excel for scalable workloads on multi-core systems.
