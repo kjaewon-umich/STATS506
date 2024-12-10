@@ -1,0 +1,1151 @@
+---
+title: "STATS 506 Project-kjaewon"
+author: "Jaewon Kim"
+output: pdf_document
+date: "12-10-2024"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Github Repository: https://github.com/kjaewon-umich/STATS506
+
+## Data
+
+```{r, message=FALSE, include=FALSE}
+# Load Necessary Libraries
+library(tidyverse)
+library(MASS)
+library(quantmod)
+library(zoo)
+library(xts)
+library(evd)
+library(ggplot2)
+
+# Load Necessary Datasets (From 01/01/2018 to 12/31/2023)
+## 3-Month Treasury Bill Rate (Risk-Free Rate)
+RF <- read.csv('3-Month Treasury Bill Rate.csv', header = TRUE)
+
+RF <- RF %>%
+  rename(Date = DATE, Rate = DTB3) %>%
+  arrange(desc(Date)) %>%
+  filter(Rate != '.')
+
+## Equities
+VTI <- read.csv('VTI ETF Stock Price History.csv', header = TRUE)
+SPY <- read.csv('SPY ETF Stock Price History.csv', header = TRUE)
+
+## Bonds
+BND <- read.csv('BND ETF Stock Price History.csv', header = TRUE)
+AGG <- read.csv('AGG ETF Stock Price History.csv', header = TRUE)
+
+## Real Estate
+VNQ <- read.csv('VNQ ETF Stock Price History.csv', header = TRUE)
+USRT <- read.csv('USRT ETF Stock Price History.csv', header = TRUE)
+
+## Commodities
+GSG <- read.csv('GSG ETF Stock Price History.csv', header = TRUE)
+USO <- read.csv('USO ETF Stock Price History.csv', header = TRUE)
+GLD <- read.csv('GLD ETF Stock Price History.csv', header = TRUE)
+
+# Data Preprocessing (Interpolation)
+
+# Convert date column to Date Type
+RF$Date <- as.Date(RF$Date, format = "%Y-%m-%d")
+VTI$Date <- as.Date(VTI$Date, format = "%m/%d/%Y")
+SPY$Date <- as.Date(SPY$Date, format = "%m/%d/%Y")
+BND$Date <- as.Date(BND$Date, format = "%m/%d/%Y")
+AGG$Date <- as.Date(AGG$Date, format = "%m/%d/%Y")
+VNQ$Date <- as.Date(VNQ$Date, format = "%m/%d/%Y")
+USRT$Date <- as.Date(USRT$Date, format = "%m/%d/%Y")
+GSG$Date <- as.Date(GSG$Date, format = "%m/%d/%Y")
+USO$Date <- as.Date(USO$Date, format = "%m/%d/%Y")
+GLD$Date <- as.Date(GLD$Date, format = "%m/%d/%Y")
+
+RF_Monthly <- RF %>%
+  mutate(YearMonth = format(Date, "%Y-%m")) %>%  # Extract year and month
+  group_by(YearMonth) %>%                        # Group by year and month
+  summarise(Monthly_Rate = mean(as.numeric(Rate)/100, na.rm = FALSE)) %>%  
+  # Calculate average rate
+  rename(Date = YearMonth)
+
+RF_Quarterly <- RF %>%
+  mutate(Quarter = as.yearqtr(Date)) %>%  # Extract quarter
+  mutate(Quarter = as.Date(Quarter)) %>%
+  group_by(Quarter) %>%                  # Group by quarter
+  summarise(Quarterly_Rate = mean(as.numeric(Rate) / 100, na.rm = FALSE)) %>%  
+  # Calculate average rate
+  rename(Date = Quarter)                 
+  
+RF_Annual <- RF %>%
+  mutate(Year = format(Date, "%Y")) %>%  # Extract year 
+  group_by(Year) %>%                        # Group by year 
+  summarise(Annual_Rate = mean(as.numeric(Rate)/100, na.rm = FALSE)) %>%  
+  # Calculate average rate
+  rename(Date = Year)
+
+# Create xts objects 
+VTI.price <- xts(VTI$Price, order.by = VTI$Date)
+SPY.price <- xts(SPY$Price, order.by = SPY$Date)
+BND.price <- xts(BND$Price, order.by = BND$Date)
+AGG.price <- xts(AGG$Price, order.by = AGG$Date)
+VNQ.price <- xts(VNQ$Price, order.by = VNQ$Date)
+USRT.price <- xts(USRT$Price, order.by = USRT$Date)
+GSG.price <- xts(GSG$Price, order.by = GSG$Date)
+USO.price <- xts(USO$Price, order.by = USO$Date)
+GLD.price <- xts(GLD$Price, order.by = GLD$Date)
+
+# Get daily, monthly, and annual return for each ETFs
+VTI.monthly_returns <- monthlyReturn(VTI.price)
+VTI.annual_returns <- annualReturn(VTI.price)
+VTI.monthly <- data.frame(Date = index(VTI.monthly_returns),
+                          Return = coredata(VTI.monthly_returns))
+VTI.annual <- data.frame(Date = index(VTI.annual_returns),
+                         Return = coredata(VTI.annual_returns))
+
+SPY.monthly_returns <- monthlyReturn(SPY.price)
+SPY.annual_returns <- annualReturn(SPY.price)
+SPY.monthly <- data.frame(Date = index(SPY.monthly_returns),
+                          Return = coredata(SPY.monthly_returns))
+SPY.annual <- data.frame(Date = index(SPY.annual_returns),
+                         Return = coredata(SPY.annual_returns))
+
+BND.monthly_returns <- monthlyReturn(BND.price)
+BND.annual_returns <- annualReturn(BND.price)
+BND.monthly <- data.frame(Date = index(BND.monthly_returns),
+                          Return = coredata(BND.monthly_returns))
+BND.annual <- data.frame(Date = index(BND.annual_returns),
+                         Return = coredata(BND.annual_returns))
+
+AGG.monthly_returns <- monthlyReturn(AGG.price)
+AGG.annual_returns <- annualReturn(AGG.price)
+AGG.monthly <- data.frame(Date = index(AGG.monthly_returns),
+                          Return = coredata(AGG.monthly_returns))
+AGG.annual <- data.frame(Date = index(AGG.annual_returns),
+                         Return = coredata(AGG.annual_returns))
+
+VNQ.monthly_returns <- monthlyReturn(VNQ.price)
+VNQ.annual_returns <- annualReturn(VNQ.price)
+VNQ.monthly <- data.frame(Date = index(VNQ.monthly_returns),
+                          Return = coredata(VNQ.monthly_returns))
+VNQ.annual <- data.frame(Date = index(VNQ.annual_returns),
+                         Return = coredata(VNQ.annual_returns))
+
+USRT.monthly_returns <- monthlyReturn(USRT.price)
+USRT.annual_returns <- annualReturn(USRT.price)
+USRT.monthly <- data.frame(Date = index(USRT.monthly_returns),
+                          Return = coredata(USRT.monthly_returns))
+USRT.annual <- data.frame(Date = index(USRT.annual_returns),
+                         Return = coredata(USRT.annual_returns))
+
+GSG.monthly_returns <- monthlyReturn(GSG.price)
+GSG.annual_returns <- annualReturn(GSG.price)
+GSG.monthly <- data.frame(Date = index(GSG.monthly_returns),
+                          Return = coredata(GSG.monthly_returns))
+GSG.annual <- data.frame(Date = index(GSG.annual_returns),
+                         Return = coredata(GSG.annual_returns))
+
+USO.monthly_returns <- monthlyReturn(USO.price)
+USO.annual_returns <- annualReturn(USO.price)
+USO.monthly <- data.frame(Date = index(USO.monthly_returns),
+                          Return = coredata(USO.monthly_returns))
+USO.annual <- data.frame(Date = index(USO.annual_returns),
+                         Return = coredata(USO.annual_returns))
+
+GLD.monthly_returns <- monthlyReturn(GLD.price)
+GLD.annual_returns <- annualReturn(GLD.price)
+GLD.monthly <- data.frame(Date = index(GLD.monthly_returns),
+                          Return = coredata(GLD.monthly_returns))
+GLD.annual <- data.frame(Date = index(GLD.annual_returns),
+                         Return = coredata(GLD.annual_returns))
+
+#' Convert Monthly Returns to Quarterly Returns
+#'
+#' Aggregates monthly return data into quarterly returns by calculating 
+#' the mean of each quarter.
+#'
+#' @param data A data frame containing monthly returns. Must include 
+#' a "Date" column in a Date format.
+#' @return A data frame with quarterly returns, where the "Date" column 
+#' represents the quarter start date.
+#' @examples
+#' # Example usage
+#' quarterly_data <- convert_to_quarterly(monthly_data)
+convert_to_quarterly <- function(data) {
+  data$Date <- as.yearqtr(data$Date)  # Convert Date to quarterly format
+  aggregated <- aggregate(data[, -1], by = list(Quarter = data$Date), 
+                          FUN = mean, na.rm = TRUE)  # Aggregate by quarter
+  colnames(aggregated)[1] <- "Date"  # Rename the first column to Date
+  return(aggregated)
+}
+
+## Equities
+Equities.Monthly <- merge(VTI.monthly, SPY.monthly, by = "Date", all = TRUE)
+colnames(Equities.Monthly) <- c("Date", "VTI_Return", "SPY_Return")
+Equities.Monthly$VTI_Return <- na.approx(Equities.Monthly$VTI_Return, 
+                                         na.rm = FALSE)
+Equities.Monthly$SPY_Return <- na.approx(Equities.Monthly$SPY_Return, 
+                                         na.rm = FALSE)
+
+Equities.Quarterly <- convert_to_quarterly(Equities.Monthly)
+
+Equities.Annual <- merge(VTI.annual, SPY.annual, by = "Date", all = TRUE)
+colnames(Equities.Annual) <- c("Date", "VTI_Return", "SPY_Return")
+Equities.Annual$VTI_Return <- na.approx(Equities.Annual$VTI_Return, 
+                                        na.rm = FALSE)
+Equities.Annual$SPY_Return <- na.approx(Equities.Annual$SPY_Return, 
+                                        na.rm = FALSE)
+
+## Bonds
+Bonds.Monthly <- merge(BND.monthly, AGG.monthly, by = "Date", all = TRUE)
+colnames(Bonds.Monthly) <- c("Date", "BND_Return", "AGG_Return")
+Bonds.Monthly$BND_Return <- na.approx(Bonds.Monthly$BND_Return, na.rm = FALSE)
+Bonds.Monthly$AGG_Return <- na.approx(Bonds.Monthly$AGG_Return, na.rm = FALSE)
+
+Bonds.Quarterly <- convert_to_quarterly(Bonds.Monthly)
+
+Bonds.Annual <- merge(BND.annual, AGG.annual, by = "Date", all = TRUE)
+colnames(Bonds.Annual) <- c("Date", "BND_Return", "AGG_Return")
+Bonds.Annual$BND_Return <- na.approx(Bonds.Annual$BND_Return, na.rm = FALSE)
+Bonds.Annual$AGG_Return <- na.approx(Bonds.Annual$AGG_Return, na.rm = FALSE)
+
+## Real Estate
+REIT.Monthly <- merge(VNQ.monthly, USRT.monthly, by = "Date", all = TRUE)
+colnames(REIT.Monthly) <- c("Date", "VNQ_Return", "USRT_Return")
+REIT.Monthly$VNQ_Return <- na.approx(REIT.Monthly$VNQ_Return, na.rm = FALSE)
+REIT.Monthly$USRT_Return <- na.approx(REIT.Monthly$USRT_Return, na.rm = FALSE)
+
+REIT.Quarterly <- convert_to_quarterly(REIT.Monthly)
+
+REIT.Annual <- merge(VNQ.annual, USRT.annual, by = "Date", all = TRUE)
+colnames(REIT.Annual) <- c("Date", "VNQ_Return", "USRT_Return")
+REIT.Annual$VNQ_Return <- na.approx(REIT.Annual$VNQ_Return, na.rm = FALSE)
+REIT.Annual$USRT_Return <- na.approx(REIT.Annual$USRT_Return, na.rm = FALSE)
+
+## Commodities
+# List of data frames to merge
+commodities_monthly_list <- list(GSG.monthly, USO.monthly, GLD.monthly)
+commodities_annual_list <- list(GSG.annual, USO.annual, GLD.annual)
+
+# Merge all data frames by "Date" using Reduce
+Commodities.Monthly <-  Reduce(function(x, y) merge(x, y, by = "Date", all = TRUE), 
+                               commodities_monthly_list)
+colnames(Commodities.Monthly) <- c("Date", "GSG_Return", 
+                                   "USO_Return", "GLD_Return")
+Commodities.Monthly$GSG_Return <- na.approx(Commodities.Monthly$GSG_Return, 
+                                            na.rm = FALSE)
+Commodities.Monthly$USO_Return <- na.approx(Commodities.Monthly$USO_Return, 
+                                            na.rm = FALSE)
+Commodities.Monthly$GLD_Return <- na.approx(Commodities.Monthly$GLD_Return, 
+                                            na.rm = FALSE)
+
+Commodities.Quarterly <- convert_to_quarterly(Commodities.Monthly)
+
+Commodities.Annual <-  Reduce(function(x, y) merge(x, y, by = "Date", all = TRUE), 
+                              commodities_annual_list)
+colnames(Commodities.Annual) <- c("Date", "GSG_Return", "USO_Return", "GLD_Return")
+Commodities.Annual$GSG_Return <- na.approx(Commodities.Annual$GSG_Return, 
+                                           na.rm = FALSE)
+Commodities.Annual$USO_Return <- na.approx(Commodities.Annual$USO_Return, 
+                                           na.rm = FALSE)
+Commodities.Annual$GLD_Return <- na.approx(Commodities.Annual$GLD_Return, 
+                                           na.rm = FALSE)
+
+# Calculate average (or weighted) returns for each asset class
+## Monthly
+E_monthly_return <- rowMeans(Equities.Monthly[2:3])
+B_monthly_return <- rowMeans(Bonds.Monthly[2:3])
+RE_monthly_return <- rowMeans(REIT.Monthly[2:3])
+C_monthly_return <- rowMeans(Commodities.Monthly[2:4])
+
+E_quarterly_return <- rowMeans(Equities.Quarterly[2:3], na.rm = TRUE)
+B_quarterly_return <- rowMeans(Bonds.Quarterly[2:3], na.rm = TRUE)
+RE_quarterly_return <- rowMeans(REIT.Quarterly[2:3], na.rm = TRUE)
+C_quarterly_return <- rowMeans(Commodities.Quarterly[2:4], na.rm = TRUE)
+
+## Annual
+E_annual_return <- rowMeans(Equities.Annual[2:3])
+B_annual_return <- rowMeans(Bonds.Annual[2:3])
+RE_annual_return <- rowMeans(REIT.Annual[2:3])
+C_annual_return <- rowMeans(Commodities.Annual[2:4])
+```
+
+This analysis uses **exchange traded funds (ETFs)** to represent **equities**, **bonds**, **real estate investment trusts (REITs)**, and **commodities** over the period **January 2018** to **December 2023**, chosen for its relevance to recent market trends. This dataset spans a highly volatile period marked by geopolitical tensions and natural disasters, making it relevant for evaluating portfolio performance under extreme market conditions. However, the short time window limits insights for long-term trends, requiring a careful parameter estimation for annual returns. Missing or mismatched data points were addressed through **linear interpolation**, a necessary trade-off to maintain continuity in dataset.
+
+ETFs were selected for their simplicity, accessibility, and robust representation of asset classes, leveraging the analytical capabilities of financial institutions such as Vanguard, BlackRock, and S&P. Each asset class differs in risk-return profiles. **Equities**, such as stocks, offer high returns with higher volatility. **Bonds** and **REITs** provide more stable returns, appealing to conservative investors. **Commodities**, while being the most volatile asset class, offer the potential for high returns. This diversification ensures the creation of comprehensive portfolios tailored to varying risk preferences.
+
+## Methodology
+
+Two portfolio types, **conservative** and **aggressive**, were simulated over **monthly**, **quarterly**, and **annual** horizons to capture short-, mid-, and long-term performance. The **conservative portfolio** emphasizes stability through higher allocations to bonds and REITs, while the **aggressive portfolio** prioritizes growth potential with increased exposure to equities and commodities. 
+
+Monte Carlo simulations with 10 million iterations were employed to evaluate portfolio performance metrics under three distinct scenarios in the market:
+
+1. **Normal Market**: Modeled with a **normal distribution**, assuming Geometric Brownian Motion for asset prices.
+2. **Stressed Market**: Simulated using the **Student’s t-distribution**, which better represents heavy-tailed financial returns.
+3. **Severe Market Crash**: Modeled using the **Gumbel distribution**, capturing extreme losses and tail risks common in financial data.
+
+**Tail risk** represents the probability of extreme losses in the tails of a return distribution. This concept is particularly critical in finance, as it highlights vulnerabilities during severe market downturns.
+
+For **Student's t-distribution**, the degrees of freedom for annual returns were derived using weighted averages of the monthly and quarterly degrees of freedom. For the **Gumbel distribution**, all parameters (location and scale) were estimated for monthly, quarterly, and annual horizons. These approaches ensure robust modeling despite the short time span of dataset.
+
+Performance was evaluated using these four metrics:
+
+-   **Sharpe Ratio**: Measures risk-adjusted returns relative to total risk. (Check the appendix for a formula.)
+-   **Sortino Ratio**: Focuses on downside risk, which measures risk of negative returns. Thus, relevant for risk-averse investors. (Check the appendix for a formula.)
+-   **Value at Risk (VaR)**: Quantifies potential worst-case losses within a confidence level.In this study, a 95% confidence level was applied. 
+-   **Conditional Value at Risk (CVaR)**: Provides the average loss beyond the VaR threshold, capturing tail risk. In this study, a 95% confidence level was applied.
+
+The **3-month Treasury bill yield**, representing the theoretical return of a risk-free investment, served as the risk-free rate across all analyses. Its stability across all time window supports consistent analysis under varying market conditions. This framework offers actionable insights into portfolio strategies to diverse risk tolerances. 
+
+```{r, warning=FALSE, include=FALSE}
+weights_conservative <- c(Equities = 0.3, Bonds = 0.4, 
+                          RealEstate = 0.2, Commodities = 0.1)
+
+# Monthly Return
+monthly_return_con <- weights_conservative["Equities"] * E_monthly_return +
+                      weights_conservative["Bonds"] * B_monthly_return +
+                      weights_conservative["RealEstate"] * RE_monthly_return +
+                      weights_conservative["Commodities"] * C_monthly_return
+
+monthly_return_con.df <- data.frame(Date = index(AGG.monthly_returns),
+                                    Return = coredata(monthly_return_con))
+monthly_return_con.df <- monthly_return_con.df %>%
+  mutate(Date = format(Date, "%Y-%m"))
+
+monthly_return_con.df <- merge(monthly_return_con.df, RF_Monthly, by = "Date", all = TRUE)
+
+quarterly_return_con <- weights_conservative["Equities"] * E_quarterly_return +
+                        weights_conservative["Bonds"] * B_quarterly_return +
+                        weights_conservative["RealEstate"] * RE_quarterly_return +
+                        weights_conservative["Commodities"] * C_quarterly_return
+
+RF_Quarterly$Date <- as.Date(as.yearqtr(RF_Quarterly$Date))
+quarterly_return_con.df <- data.frame(Date = RF_Quarterly$Date,
+                                      Return = coredata(quarterly_return_con))
+
+quarterly_return_con.df$Date <- as.Date(as.yearqtr(quarterly_return_con.df$Date))
+
+quarterly_return_con.df <- merge(quarterly_return_con.df, RF_Quarterly, by = "Date", all = TRUE)
+
+# Annual Return
+annual_return_con <- weights_conservative["Equities"] * E_annual_return +
+                     weights_conservative["Bonds"] * B_annual_return +
+                     weights_conservative["RealEstate"] * RE_annual_return +
+                     weights_conservative["Commodities"] * C_annual_return
+
+annual_return_con.df <- data.frame(Date = index(AGG.annual_returns),
+                                   Return = coredata(annual_return_con))
+annual_return_con.df <- annual_return_con.df %>%
+  mutate(Date = format(Date, "%Y"))
+
+annual_return_con.df <- merge(annual_return_con.df, RF_Annual, by = "Date", all = TRUE)
+
+# Risk-free rate
+rf_monthly_con <- mean(monthly_return_con.df$Monthly_Rate, na.rm = TRUE)
+rf_quarterly_con <- mean(quarterly_return_con.df$Quarterly_Rate, na.rm = TRUE)
+rf_annual_con <- mean(annual_return_con.df$Annual_Rate, na.rm = TRUE) 
+```
+
+```{r, include=FALSE}
+set.seed(506)
+n_sim <- 10000000
+
+# Mean and Standard Error
+monthly_mean_con <- mean(monthly_return_con.df$Return, na.rm = TRUE)
+monthly_sd_con <- sd(monthly_return_con.df$Return, na.rm = TRUE)
+
+quarterly_mean_con <- mean(quarterly_return_con.df$Return, na.rm = TRUE)
+quarterly_sd_con <- sd(quarterly_return_con.df$Return, na.rm = TRUE)
+
+annual_mean_con <- mean(annual_return_con.df$Return, na.rm = TRUE)
+annual_sd_con <- sd(annual_return_con.df$Return, na.rm = TRUE)
+
+
+#' Calculate Downside Deviation
+#'
+#' Computes the downside deviation, which measures the standard deviation of 
+#' returns below a given risk-free rate.
+#'
+#' @param returns A numeric vector of returns.
+#' @param risk_free_rate A numeric value representing the risk-free rate.
+#' @return The downside deviation of the returns.
+#' @examples
+#' # Example usage
+#' downside_dev <- downside_deviation(returns, 0.02)
+downside_deviation <- function(returns, risk_free_rate) {
+  # Identify negative deviations
+  downside <- returns[returns < risk_free_rate] - risk_free_rate
+  # Calculate standard deviation of downside deviations
+  return(sqrt(mean(downside^2)))
+}
+
+#' Calculate Sharpe Ratio
+#'
+#' Computes the Sharpe Ratio, which measures risk-adjusted returns relative to 
+#' the total risk.
+#'
+#' @param mean_return A numeric value representing the mean return of the portfolio.
+#' @param sd A numeric value representing the standard deviation of returns.
+#' @param risk_free_rate A numeric value representing the risk-free rate.
+#' @return The Sharpe Ratio of the portfolio.
+#' @examples
+#' # Example usage
+#' sharpe_ratio <- Sharpe_Ratio(0.08, 0.15, 0.02)
+Sharpe_Ratio <- function(mean_return, sd, risk_free_rate) {
+  sharpe_ratio <- (mean_return - risk_free_rate) / sd
+  return(sharpe_ratio)
+}
+
+
+#' Calculate Sortino Ratio
+#'
+#' Computes the Sortino Ratio, which measures risk-adjusted returns relative to 
+#' downside risk.
+#'
+#' @param mean_return A numeric value representing the mean return of 
+#' the portfolio.
+#' @param sd_downside A numeric value representing the downside deviation of 
+#' returns.
+#' @param risk_free_rate A numeric value representing the risk-free rate.
+#' @return The Sortino Ratio of the portfolio.
+#' @examples
+#' # Example usage
+#' sortino_ratio <- Sortino_Ratio(0.08, 0.10, 0.02)
+Sortino_Ratio <- function(mean_return, sd_downside, risk_free_rate) {
+  sortino_ratio <- (mean_return - risk_free_rate) / sd_downside
+  return(sortino_ratio)
+}
+```
+
+```{r, include=FALSE}
+monthly_normal_con <- rnorm(n_sim, mean = monthly_mean_con, 
+                            sd = monthly_sd_con)
+quarterly_normal_con <- rnorm(n_sim, mean = quarterly_mean_con, 
+                              sd = quarterly_sd_con)
+annual_normal_con <- rnorm(n_sim, mean = annual_mean_con, 
+                           sd = annual_sd_con)
+```
+
+```{r, warning=FALSE, include=FALSE}
+# Monthly
+monthly_fit_t_con <- fitdistr(monthly_return_con.df$Return, densfun = "t")
+monthly_df_t_con <- monthly_fit_t_con$estimate["df"]
+
+# Quarterly
+quarterly_fit_t_con <- fitdistr(quarterly_return_con.df$Return, densfun = "t")
+quarterly_df_t_con <- quarterly_fit_t_con$estimate["df"]
+
+# Annual Parameter Estimation
+annual_df_t_con <- (12 * 6 * monthly_df_t_con + 4 * 6 * quarterly_df_t_con) / (12 * 6 + 4 * 6)
+
+# Simulate portfolio returns for a stressed market
+monthly_t_con <- rt(n_sim, df = monthly_df_t_con) * monthly_sd_con + monthly_mean_con
+quarterly_t_con <- rt(n_sim, df = quarterly_df_t_con) * quarterly_sd_con + quarterly_mean_con
+annual_t_con <- rt(n_sim, df = annual_df_t_con) * annual_sd_con + annual_mean_con
+```
+
+```{r, include=FALSE}
+gamma <- 0.5772  # Euler-Mascheroni constant
+
+# Monthly
+monthly_scale_con <- (monthly_sd_con * sqrt(6)) / pi
+monthly_loc_con <- monthly_mean_con - gamma * monthly_scale_con
+
+# Quarterly
+quarterly_scale_con <- (quarterly_sd_con * sqrt(6)) / pi
+quarterly_loc_con <- quarterly_mean_con - gamma * quarterly_scale_con
+
+# Annual
+annual_scale_con <- (annual_sd_con * sqrt(6)) / pi
+annual_loc_con <- annual_mean_con - gamma * annual_scale_con
+
+# Simulate portfolio returns for a severe crash
+monthly_gumbel_con <- rgumbel(n_sim, loc = monthly_loc_con, 
+                              scale = monthly_scale_con)
+quarterly_gumbel_con <- rgumbel(n_sim, loc = quarterly_loc_con, 
+                                scale = quarterly_scale_con)
+annual_gumbel_con <- rgumbel(n_sim, loc = annual_loc_con, 
+                             scale = annual_scale_con)
+```
+
+```{r, include=FALSE}
+# Monthly
+monthly_sharpe_normal_con <- Sharpe_Ratio(
+  mean_return = monthly_mean_con, 
+  sd = monthly_sd_con, 
+  risk_free_rate = rf_monthly_con
+)
+
+monthly_sharpe_t_con <- Sharpe_Ratio(
+  mean_return = mean(monthly_t_con), 
+  sd = sd(monthly_t_con), 
+  risk_free_rate = rf_monthly_con
+)
+
+monthly_sharpe_gumbel_con <- Sharpe_Ratio(
+  mean_return = mean(monthly_gumbel_con), 
+  sd = sd(monthly_gumbel_con), 
+  risk_free_rate = rf_monthly_con
+)
+
+# Quarterly
+quarterly_sharpe_normal_con <- Sharpe_Ratio(
+  mean_return = quarterly_mean_con, 
+  sd = quarterly_sd_con, 
+  risk_free_rate = rf_quarterly_con
+)
+
+quarterly_sharpe_t_con <- Sharpe_Ratio(
+  mean_return = mean(quarterly_t_con), 
+  sd = sd(quarterly_t_con), 
+  risk_free_rate = rf_quarterly_con
+)
+
+quarterly_sharpe_gumbel_con <- Sharpe_Ratio(
+  mean_return = mean(quarterly_gumbel_con), 
+  sd = sd(quarterly_gumbel_con), 
+  risk_free_rate = rf_quarterly_con
+)
+
+# Annual
+annual_sharpe_normal_con <- Sharpe_Ratio(
+  mean_return = annual_mean_con, 
+  sd = annual_sd_con, 
+  risk_free_rate = rf_annual_con
+)
+
+annual_sharpe_t_con <- Sharpe_Ratio(
+  mean_return = mean(annual_t_con), 
+  sd = sd(annual_t_con), 
+  risk_free_rate = rf_annual_con
+)
+
+annual_sharpe_gumbel_con <- Sharpe_Ratio(
+  mean_return = mean(annual_gumbel_con), 
+  sd = sd(annual_gumbel_con), 
+  risk_free_rate = rf_annual_con
+)
+```
+
+```{r, include=FALSE}
+# Monthly
+monthly_sortino_normal_con <- Sortino_Ratio(
+  mean_return = monthly_mean_con, 
+  sd_downside = downside_deviation(monthly_normal_con, rf_monthly_con), 
+  risk_free_rate = rf_monthly_con
+)
+
+monthly_sortino_t_con <- Sortino_Ratio(
+  mean_return = mean(monthly_t_con), 
+  sd_downside = downside_deviation(monthly_t_con, rf_monthly_con), 
+  risk_free_rate = rf_monthly_con
+)
+
+monthly_sortino_gumbel_con <- Sortino_Ratio(
+  mean_return = mean(monthly_gumbel_con), 
+  sd_downside = downside_deviation(monthly_gumbel_con, rf_monthly_con), 
+  risk_free_rate = rf_monthly_con
+)
+
+# Quarterly
+quarterly_sortino_normal_con <- Sortino_Ratio(
+  mean_return = quarterly_mean_con, 
+  sd_downside = downside_deviation(quarterly_normal_con, rf_quarterly_con), 
+  risk_free_rate = rf_quarterly_con
+)
+
+quarterly_sortino_t_con <- Sortino_Ratio(
+  mean_return = mean(quarterly_t_con), 
+  sd_downside = downside_deviation(quarterly_t_con, rf_quarterly_con), 
+  risk_free_rate = rf_quarterly_con
+)
+
+quarterly_sortino_gumbel_con <- Sortino_Ratio(
+  mean_return = mean(quarterly_gumbel_con), 
+  sd_downside = downside_deviation(quarterly_gumbel_con, rf_quarterly_con), 
+  risk_free_rate = rf_quarterly_con
+)
+
+# Annual
+annual_sortino_normal_con <- Sortino_Ratio(
+  mean_return = annual_mean_con, 
+  sd_downside = downside_deviation(annual_normal_con, rf_annual_con), 
+  risk_free_rate = rf_annual_con
+)
+
+annual_sortino_t_con <- Sortino_Ratio(
+  mean_return = mean(annual_t_con), 
+  sd_downside = downside_deviation(annual_t_con, rf_annual_con), 
+  risk_free_rate = rf_annual_con
+)
+
+annual_sortino_gumbel_con <- Sortino_Ratio(
+  mean_return = mean(annual_gumbel_con), 
+  sd_downside = downside_deviation(annual_gumbel_con, rf_annual_con), 
+  risk_free_rate = rf_annual_con
+)
+```
+
+```{r, include=FALSE}
+# Monthly
+monthly_var_95_normal_con <- quantile(monthly_normal_con, probs = 0.05)
+monthly_var_95_t_con <- quantile(monthly_t_con, probs = 0.05)
+monthly_var_95_gumbel_con <- quantile(monthly_gumbel_con, probs = 0.05)
+
+# Quarterly
+quarterly_var_95_normal_con <- quantile(quarterly_normal_con, probs = 0.05)
+quarterly_var_95_t_con <- quantile(quarterly_t_con, probs = 0.05)
+quarterly_var_95_gumbel_con <- quantile(quarterly_gumbel_con, probs = 0.05)
+
+# Annual
+annual_var_95_normal_con <- quantile(annual_normal_con, probs = 0.05)
+annual_var_95_t_con <- quantile(annual_t_con, probs = 0.05)
+annual_var_95_gumbel_con <- quantile(annual_gumbel_con, probs = 0.05)
+```
+
+```{r, include=FALSE}
+# Monthly
+monthly_cvar_95_normal_con <- mean(monthly_normal_con[monthly_normal_con <= monthly_var_95_normal_con])
+monthly_cvar_95_t_con <- mean(monthly_t_con[monthly_t_con <= monthly_var_95_t_con])
+monthly_cvar_95_gumbel_con <- mean(monthly_gumbel_con[monthly_gumbel_con <= monthly_var_95_gumbel_con])
+
+# Quarterly
+quarterly_cvar_95_normal_con <- mean(quarterly_normal_con[quarterly_normal_con <= quarterly_var_95_normal_con])
+quarterly_cvar_95_t_con <- mean(quarterly_t_con[quarterly_t_con <= quarterly_var_95_t_con])
+quarterly_cvar_95_gumbel_con <- mean(quarterly_gumbel_con[quarterly_gumbel_con <= quarterly_var_95_gumbel_con])
+
+# Annual
+annual_cvar_95_normal_con <- mean(annual_normal_con[annual_normal_con <= annual_var_95_normal_con])
+annual_cvar_95_t_con <- mean(annual_t_con[annual_t_con <= annual_var_95_t_con])
+annual_cvar_95_gumbel_con <- mean(annual_gumbel_con[annual_gumbel_con <= annual_var_95_gumbel_con])
+```
+
+```{r, warning=FALSE, include=FALSE}
+# Aggressive Investor
+weights_aggressive <- c(Equities = 0.6, Bonds = 0.1, 
+                        RealEstate = 0.10, Commodities = 0.2)
+
+# Monthly Return
+monthly_return_agg <- weights_aggressive["Equities"] * E_monthly_return +
+                      weights_aggressive["Bonds"] * B_monthly_return +
+                      weights_aggressive["RealEstate"] * RE_monthly_return +
+                      weights_aggressive["Commodities"] * C_monthly_return
+
+monthly_return_agg.df <- data.frame(Date = index(AGG.monthly_returns),
+                                    Return = coredata(monthly_return_agg))
+monthly_return_agg.df <- monthly_return_agg.df %>%
+  mutate(Date = format(Date, "%Y-%m"))
+
+monthly_return_agg.df <- merge(monthly_return_agg.df, RF_Monthly, 
+                               by = "Date", all = TRUE)
+
+
+# Quarterly Return
+quarterly_return_agg <- weights_aggressive["Equities"] * E_quarterly_return +
+                        weights_aggressive["Bonds"] * B_quarterly_return +
+                        weights_aggressive["RealEstate"] * RE_quarterly_return +
+                        weights_aggressive["Commodities"] * C_quarterly_return
+
+quarterly_return_agg.df <- data.frame(Date = RF_Quarterly$Date,
+                                      Return = coredata(quarterly_return_agg))
+
+quarterly_return_agg.df$Date <- as.Date(as.yearqtr(quarterly_return_agg.df$Date))
+quarterly_return_agg.df <- merge(quarterly_return_agg.df, RF_Quarterly, 
+                                 by = "Date", all = TRUE)
+
+
+# Annual Return
+annual_return_agg <- weights_aggressive["Equities"] * E_annual_return +
+                     weights_aggressive["Bonds"] * B_annual_return +
+                     weights_aggressive["RealEstate"] * RE_annual_return +
+                     weights_aggressive["Commodities"] * C_annual_return
+
+annual_return_agg.df <- data.frame(Date = index(AGG.annual_returns),
+                                   Return = coredata(annual_return_agg))
+annual_return_agg.df <- annual_return_agg.df %>%
+  mutate(Date = format(Date, "%Y"))
+
+annual_return_agg.df <- merge(annual_return_agg.df, RF_Annual, 
+                              by = "Date", all = TRUE)
+
+# Risk-free rate
+rf_monthly_agg <- mean(monthly_return_agg.df$Monthly_Rate, na.rm = TRUE)
+rf_quarterly_agg <- mean(quarterly_return_agg.df$Quarterly_Rate, na.rm = TRUE)
+rf_annual_agg <- mean(annual_return_agg.df$Annual_Rate, na.rm = TRUE) 
+```
+
+```{r, include=FALSE}
+set.seed(506)
+n_sim <- 10000000
+
+# Mean and Standard Error
+monthly_mean_agg <- mean(monthly_return_agg.df$Return, na.rm = TRUE)
+monthly_sd_agg <- sd(monthly_return_agg.df$Return, na.rm = TRUE)
+
+quarterly_mean_agg <- mean(quarterly_return_agg.df$Return, na.rm = TRUE)
+quarterly_sd_agg <- sd(quarterly_return_agg.df$Return, na.rm = TRUE)
+
+annual_mean_agg <- mean(annual_return_agg.df$Return, na.rm = TRUE)
+annual_sd_agg <- sd(annual_return_agg.df$Return, na.rm = TRUE)
+```
+
+```{r, include=FALSE}
+monthly_normal_agg <- rnorm(n_sim, mean = monthly_mean_agg, 
+                            sd = monthly_sd_agg)
+quarterly_normal_agg <- rnorm(n_sim, mean = quarterly_mean_agg, 
+                              sd = quarterly_sd_agg)
+annual_normal_agg <- rnorm(n_sim, mean = annual_mean_agg, 
+                           sd = annual_sd_agg)
+```
+
+```{r, warning=FALSE, include=FALSE}
+# Monthly
+monthly_fit_t_agg <- fitdistr(monthly_return_agg.df$Return, densfun = "t")
+monthly_df_t_agg <- monthly_fit_t_agg$estimate["df"]
+
+# Quarterly
+quarterly_fit_t_agg <- fitdistr(quarterly_return_agg.df$Return, densfun = "t")
+quarterly_df_t_agg <- quarterly_fit_t_agg$estimate["df"]
+
+# Annual Parameter Estimation
+annual_df_t_agg <- (12 * 6 * monthly_df_t_agg + 4 * 6 * quarterly_df_t_agg) / (12 * 6 + 4 * 6)
+
+# Simulate portfolio returns for a stressed market
+monthly_t_agg <- rt(n_sim, df = monthly_df_t_agg) * monthly_sd_agg + monthly_mean_agg
+quarterly_t_agg <- rt(n_sim, df = quarterly_df_t_agg) * quarterly_sd_agg + quarterly_mean_agg
+annual_t_agg <- rt(n_sim, df = annual_df_t_agg) * annual_sd_agg + annual_mean_agg
+```
+
+```{r, include=FALSE}
+gamma <- 0.5772  # Euler-Mascheroni aggstant
+
+# Monthly
+monthly_scale_agg <- (monthly_sd_agg * sqrt(6)) / pi
+monthly_loc_agg <- monthly_mean_agg - gamma * monthly_scale_agg
+
+# Quarterly
+quarterly_scale_agg <- (quarterly_sd_agg * sqrt(6)) / pi
+quarterly_loc_agg <- quarterly_mean_agg - gamma * quarterly_scale_agg
+
+# Annual
+annual_scale_agg <- (annual_sd_agg * sqrt(6)) / pi
+annual_loc_agg <- annual_mean_agg - gamma * annual_scale_agg
+
+# Simulate portfolio returns for a severe crash
+monthly_gumbel_agg <- rgumbel(n_sim, loc = monthly_loc_agg, 
+                              scale = monthly_scale_agg)
+quarterly_gumbel_agg <- rgumbel(n_sim, loc = quarterly_loc_agg, 
+                                scale = quarterly_scale_agg)
+annual_gumbel_agg <- rgumbel(n_sim, loc = annual_loc_agg, 
+                             scale = annual_scale_agg)
+```
+
+```{r, include=FALSE}
+# Monthly
+monthly_sharpe_normal_agg <- Sharpe_Ratio(
+  mean_return = monthly_mean_agg, 
+  sd = monthly_sd_agg, 
+  risk_free_rate = rf_monthly_agg
+)
+
+monthly_sharpe_t_agg <- Sharpe_Ratio(
+  mean_return = mean(monthly_t_agg), 
+  sd = sd(monthly_t_agg), 
+  risk_free_rate = rf_monthly_agg
+)
+
+monthly_sharpe_gumbel_agg <- Sharpe_Ratio(
+  mean_return = mean(monthly_gumbel_agg), 
+  sd = sd(monthly_gumbel_agg), 
+  risk_free_rate = rf_monthly_agg
+)
+
+# Quarterly
+quarterly_sharpe_normal_agg <- Sharpe_Ratio(
+  mean_return = quarterly_mean_agg, 
+  sd = quarterly_sd_agg, 
+  risk_free_rate = rf_quarterly_agg
+)
+
+quarterly_sharpe_t_agg <- Sharpe_Ratio(
+  mean_return = mean(quarterly_t_agg), 
+  sd = sd(quarterly_t_agg), 
+  risk_free_rate = rf_quarterly_agg
+)
+
+quarterly_sharpe_gumbel_agg <- Sharpe_Ratio(
+  mean_return = mean(quarterly_gumbel_agg), 
+  sd = sd(quarterly_gumbel_agg), 
+  risk_free_rate = rf_quarterly_agg
+)
+
+# Annual
+annual_sharpe_normal_agg <- Sharpe_Ratio(
+  mean_return = annual_mean_agg, 
+  sd = annual_sd_agg, 
+  risk_free_rate = rf_annual_agg
+)
+
+annual_sharpe_t_agg <- Sharpe_Ratio(
+  mean_return = mean(annual_t_agg), 
+  sd = sd(annual_t_agg), 
+  risk_free_rate = rf_annual_agg
+)
+
+annual_sharpe_gumbel_agg <- Sharpe_Ratio(
+  mean_return = mean(annual_gumbel_agg), 
+  sd = sd(annual_gumbel_agg), 
+  risk_free_rate = rf_annual_agg
+)
+```
+
+```{r, include=FALSE}
+# Monthly
+monthly_sortino_normal_agg <- Sortino_Ratio(
+  mean_return = monthly_mean_agg, 
+  sd_downside = downside_deviation(monthly_normal_agg, rf_monthly_agg), 
+  risk_free_rate = rf_monthly_agg
+)
+
+monthly_sortino_t_agg <- Sortino_Ratio(
+  mean_return = mean(monthly_t_agg), 
+  sd_downside = downside_deviation(monthly_t_agg, rf_monthly_agg), 
+  risk_free_rate = rf_monthly_agg
+)
+
+monthly_sortino_gumbel_agg <- Sortino_Ratio(
+  mean_return = mean(monthly_gumbel_agg), 
+  sd_downside = downside_deviation(monthly_gumbel_agg, rf_monthly_agg), 
+  risk_free_rate = rf_monthly_agg
+)
+
+# Quarterly
+quarterly_sortino_normal_agg <- Sortino_Ratio(
+  mean_return = quarterly_mean_agg, 
+  sd_downside = downside_deviation(quarterly_normal_agg, rf_quarterly_agg), 
+  risk_free_rate = rf_quarterly_agg
+)
+
+quarterly_sortino_t_agg <- Sortino_Ratio(
+  mean_return = mean(quarterly_t_agg), 
+  sd_downside = downside_deviation(quarterly_t_agg, rf_quarterly_agg), 
+  risk_free_rate = rf_quarterly_agg
+)
+
+quarterly_sortino_gumbel_agg <- Sortino_Ratio(
+  mean_return = mean(quarterly_gumbel_agg), 
+  sd_downside = downside_deviation(quarterly_gumbel_agg, rf_quarterly_agg), 
+  risk_free_rate = rf_quarterly_agg
+)
+
+# Annual
+annual_sortino_normal_agg <- Sortino_Ratio(
+  mean_return = annual_mean_agg, 
+  sd_downside = downside_deviation(annual_normal_agg, rf_annual_agg), 
+  risk_free_rate = rf_annual_agg
+)
+
+annual_sortino_t_agg <- Sortino_Ratio(
+  mean_return = mean(annual_t_agg), 
+  sd_downside = downside_deviation(annual_t_agg, rf_annual_agg), 
+  risk_free_rate = rf_annual_agg
+)
+
+annual_sortino_gumbel_agg <- Sortino_Ratio(
+  mean_return = mean(annual_gumbel_agg), 
+  sd_downside = downside_deviation(annual_gumbel_agg, rf_annual_agg), 
+  risk_free_rate = rf_annual_agg
+)
+```
+
+```{r, include=FALSE}
+# Monthly
+monthly_var_95_normal_agg <- quantile(monthly_normal_agg, probs = 0.05)
+monthly_var_95_t_agg <- quantile(monthly_t_agg, probs = 0.05)
+monthly_var_95_gumbel_agg <- quantile(monthly_gumbel_agg, probs = 0.05)
+
+# Quarterly
+quarterly_var_95_normal_agg <- quantile(quarterly_normal_agg, probs = 0.05)
+quarterly_var_95_t_agg <- quantile(quarterly_t_agg, probs = 0.05)
+quarterly_var_95_gumbel_agg <- quantile(quarterly_gumbel_agg, probs = 0.05)
+
+# Annual
+annual_var_95_normal_agg <- quantile(annual_normal_agg, probs = 0.05)
+annual_var_95_t_agg <- quantile(annual_t_agg, probs = 0.05)
+annual_var_95_gumbel_agg <- quantile(annual_gumbel_agg, probs = 0.05)
+```
+
+```{r, include=FALSE}
+# Monthly
+monthly_cvar_95_normal_agg <- mean(monthly_normal_agg[monthly_normal_agg <= monthly_var_95_normal_agg])
+monthly_cvar_95_t_agg <- mean(monthly_t_agg[monthly_t_agg <= monthly_var_95_t_agg])
+monthly_cvar_95_gumbel_agg <- mean(monthly_gumbel_agg[monthly_gumbel_agg <= monthly_var_95_gumbel_agg])
+
+# Quarterly
+quarterly_cvar_95_normal_agg <- mean(quarterly_normal_agg[quarterly_normal_agg <= quarterly_var_95_normal_agg])
+quarterly_cvar_95_t_agg <- mean(quarterly_t_agg[quarterly_t_agg <= quarterly_var_95_t_agg])
+quarterly_cvar_95_gumbel_agg <- mean(quarterly_gumbel_agg[quarterly_gumbel_agg <= quarterly_var_95_gumbel_agg])
+
+# Annual
+annual_cvar_95_normal_agg <- mean(annual_normal_agg[annual_normal_agg <= annual_var_95_normal_agg])
+annual_cvar_95_t_agg <- mean(annual_t_agg[annual_t_agg <= annual_var_95_t_agg])
+annual_cvar_95_gumbel_agg <- mean(annual_gumbel_agg[annual_gumbel_agg <= annual_var_95_gumbel_agg])
+```
+
+## Simulation Result
+
+### Conservative Investor
+
+#### Monthly Result
+
+```{r, echo=FALSE}
+# Monthly
+monthly_results_con <- data.frame(
+  Metric = c("Sharpe Ratio", "Sortino Ratio", "95% VaR", "95% CVaR"),
+  Regular_Market = c(monthly_sharpe_normal_con, monthly_sortino_normal_con, 
+                     monthly_var_95_normal_con, monthly_cvar_95_normal_con),
+  Stressed_Market = c(monthly_sharpe_t_con, monthly_sortino_t_con, 
+                      monthly_var_95_t_con, monthly_cvar_95_t_con),
+  Severe_Crash = c(monthly_sharpe_gumbel_con, monthly_sortino_gumbel_con, 
+                   monthly_var_95_gumbel_con, monthly_cvar_95_gumbel_con)
+)
+
+print(monthly_results_con)
+```
+
+#### Quarterly Result
+
+```{r, echo=FALSE}
+# Quarterly
+quarterly_results_con <- data.frame(
+  Metric = c("Sharpe Ratio", "Sortino Ratio", "95% VaR", "95% CVaR"),
+  Regular_Market = c(quarterly_sharpe_normal_con, quarterly_sortino_normal_con, 
+                     quarterly_var_95_normal_con, quarterly_cvar_95_normal_con),
+  Stressed_Market = c(quarterly_sharpe_t_con, quarterly_sortino_t_con, 
+                      quarterly_var_95_t_con, quarterly_cvar_95_t_con),
+  Severe_Crash = c(quarterly_sharpe_gumbel_con, quarterly_sortino_gumbel_con, 
+                   quarterly_var_95_gumbel_con, quarterly_cvar_95_gumbel_con)
+)
+
+print(quarterly_results_con)
+```
+
+#### Annual Result
+
+```{r, echo=FALSE}
+# Annual
+annual_results_con <- data.frame(
+  Metric = c("Sharpe Ratio", "Sortino Ratio", "95% VaR", "95% CVaR"),
+  Regular_Market = c(annual_sharpe_normal_con, annual_sortino_normal_con, 
+                     annual_var_95_normal_con, annual_cvar_95_normal_con),
+  Stressed_Market = c(annual_sharpe_t_con, annual_sortino_t_con, 
+                      annual_var_95_t_con, annual_cvar_95_t_con),
+  Severe_Crash = c(annual_sharpe_gumbel_con, annual_sortino_gumbel_con, 
+                   annual_var_95_gumbel_con, annual_cvar_95_gumbel_con)
+)
+
+print(annual_results_con)
+```
+
+The conservative portfolio exhibited stability across all conditions due to higher allocations to bonds and REITs. It generally underperformed compared to the aggressive portfolio, reflecting its lower exposure to equities. However, during severe crashes, it displayed greater resilience, with substantially less negative VaR and CVaR values, showcasing its effectiveness in mitigating tail risk. The consistent annual Sharpe Ratio further highlights its suitability for risk-averse investors prioritizing stability over high returns.
+
+### Aggressive Investor
+
+#### Monthly Result
+
+```{r, echo=FALSE}
+# Monthly
+monthly_results_agg <- data.frame(
+  Metric = c("Sharpe Ratio", "Sortino Ratio", "95% VaR", "95% CVaR"),
+  Regular_Market = c(monthly_sharpe_normal_agg, monthly_sortino_normal_agg, 
+                     monthly_var_95_normal_agg, monthly_cvar_95_normal_agg),
+  Stressed_Market = c(monthly_sharpe_t_agg, monthly_sortino_t_agg, 
+                      monthly_var_95_t_agg, monthly_cvar_95_t_agg),
+  Severe_Crash = c(monthly_sharpe_gumbel_agg, monthly_sortino_gumbel_agg, 
+                   monthly_var_95_gumbel_agg, monthly_cvar_95_gumbel_agg)
+)
+
+print(monthly_results_agg)
+```
+
+#### Quarterly Result
+
+```{r, echo=FALSE}
+# Quarterly
+quarterly_results_agg <- data.frame(
+  Metric = c("Sharpe Ratio", "Sortino Ratio", "95% VaR", "95% CVaR"),
+  Regular_Market = c(quarterly_sharpe_normal_agg, quarterly_sortino_normal_agg, 
+                     quarterly_var_95_normal_agg, quarterly_cvar_95_normal_agg),
+  Stressed_Market = c(quarterly_sharpe_t_agg, quarterly_sortino_t_agg, 
+                      quarterly_var_95_t_agg, quarterly_cvar_95_t_agg),
+  Severe_Crash = c(quarterly_sharpe_gumbel_agg, quarterly_sortino_gumbel_agg, 
+                   quarterly_var_95_gumbel_agg, quarterly_cvar_95_gumbel_agg)
+)
+
+print(quarterly_results_agg)
+```
+
+#### Annual Result
+
+```{r, echo=FALSE}
+# Annual
+annual_results_agg <- data.frame(
+  Metric = c("Sharpe Ratio", "Sortino Ratio", "95% VaR", "95% CVaR"),
+  Regular_Market = c(annual_sharpe_normal_agg, annual_sortino_normal_agg, 
+                     annual_var_95_normal_agg, annual_cvar_95_normal_agg),
+  Stressed_Market = c(annual_sharpe_t_agg, annual_sortino_t_agg, 
+                      annual_var_95_t_agg, annual_cvar_95_t_agg),
+  Severe_Crash = c(annual_sharpe_gumbel_agg, annual_sortino_gumbel_agg, 
+                   annual_var_95_gumbel_agg, annual_cvar_95_gumbel_agg)
+)
+
+print(annual_results_agg)
+```
+
+The aggressive portfolio demonstrated greater tail risks, reflected by higher VaR and CVaR values, due to its significant allocations to equities and commodities. However, its superior Sharpe and Sortino ratios highlight the potential for higher returns, making it a suitable choice for investors with greater risk tolerance who focus on the capital growth.
+
+The efficient frontier (Appendix Figure 1) illustrates risk-return trade-offs, with aggressive portfolios achieving higher returns at elevated risks and conservative portfolios emphasizing stability. The aggressive portfolio exhibits higher expected returns at elevated risk levels across all time frames. Conversely, the conservative portfolio remains in the lower-risk, lower-return region. 
+
+The VaR and CVaR plots (Appendix Figure 2 and 3) emphasize the disparities in potential losses and tail risks between portfolios across time horizons and market conditions. The aggressive portfolio demonstrates the risk of greater losses, particularly in stressed and crash markets, mirroring its higher-risk composition. In contrast, the conservative portfolio displays greater stability, with less pronounced declines in VaR and CVaR values. These results highlight the importance of portfolio structure in managing tail risks and aligning investment strategies with varying market conditions.
+
+These findings underscore the importance of aligning portfolio allocation with investor risk preferences. Conservative portfolios, with their lower tail risks, offer stability for risk-averse investors, making them a reliable option during volatile market periods. In contrast, aggressive portfolios demonstrate higher returns but also greater vulnerability in stressed and crash scenarios. This analysis provides actionable insights for both individual and institutional investors, offering a framework to optimize portfolios under diverse market scenarios.
+
+## Conclusion
+
+This study highlights the trade-offs between risk and return in conservative and aggressive portfolios under varying market conditions. The conservative portfolio, with its greater exposure to bonds and REITs, demonstrated resilience during severe market crashes but lacked in returns during normal and stressed markets. In contrast, the aggressive portfolio leveraged its higher allocation to equities and commodities to deliver superior performance under normal and stressed conditions but was significantly more vulnerable to extreme downturns.
+
+In conclusion, this research underscores the importance of tailoring portfolios to individual risk preferences. Conservative portfolios cater to investors who prioritize stability and capital preservation, while aggressive portfolios are customed to investors seeking higher returns but with a tolerance for elevated risk. Future studies could enhance the robustness of the analysis by exploring alternative risk metrics, such as maximum drawdown, or longer time windows. Additionally, considering more nuanced distributions beyond Gumbel or Student's t could provide further insights into extreme market conditions.
+
+## Appendix
+
+### Sharpe Ratio Formula
+
+\[
+\text{Sharpe Ratio} = \frac{E[R_p] - R_f}{\sigma_p}
+\]
+
+Where:
+
+- $\text{E}[R_p]$: Expected portfolio return
+- $R_f$: Risk-free rate
+- $\sigma_p$: Standard deviation of portfolio returns
+
+### Sortino Ratio Formula
+
+\[
+\text{Sortino Ratio} = \frac{E[R_p] - R_f}{\sigma_d}
+\]
+
+Where:
+
+- $\sigma_d$: Downside deviation, calculated using only negative returns relative to $R_f$.
+
+### Figure 1: Efficient Frontier
+
+```{r, message=FALSE, out.height="70%", out.width="70%", echo=FALSE}
+# Combine results into a data frame for plotting
+ef_data <- data.frame(
+  TimeHorizon = rep(c("Monthly", "Quarterly", "Annual"), each = 6),
+  MarketCondition = rep(c("Regular", "Stressed", "Crash"), times = 6),
+  PortfolioType = rep(c("Conservative", "Aggressive"), each = 3, times = 3),
+  MeanReturn = c(
+    monthly_mean_con, quarterly_mean_con, annual_mean_con,
+    monthly_mean_agg, quarterly_mean_agg, annual_mean_agg
+  ),
+  Risk = c(
+    monthly_sd_con, quarterly_sd_con, annual_sd_con,
+    monthly_sd_agg, quarterly_sd_agg, annual_sd_agg
+  )
+)
+
+# Plot efficient frontier
+ggplot(ef_data, aes(x = Risk, y = MeanReturn, color = MarketCondition)) +
+  geom_point(aes(shape = PortfolioType), size = 4) +
+  geom_line(aes(group = interaction(TimeHorizon, PortfolioType, MarketCondition)), linetype = "dashed") +
+  facet_wrap(~ TimeHorizon, nrow = 1) +
+  theme_minimal() +
+  labs(
+    title = "Efficient Frontier by Time Horizon and Market Condition",
+    x = "Portfolio Risk (Standard Deviation)",
+    y = "Portfolio Return (Mean)",
+    color = "Market Condition",
+    shape = "Portfolio Type"
+  ) +
+  scale_color_manual(values = c("red", "green", "blue"))
+```
+
+### Figure 2: VaR
+
+```{r, include=FALSE}
+conservative_data <- data.frame(
+  Horizon = rep(c("Monthly", "Quarterly", "Annual"), each = 3),
+  Market_Condition = rep(c("Regular", "Stressed", "Crash"), times = 3),
+  VaR = c(monthly_var_95_normal_con, monthly_var_95_t_con, monthly_var_95_gumbel_con, quarterly_var_95_normal_con, quarterly_var_95_t_con, quarterly_var_95_gumbel_con, annual_var_95_normal_con, annual_var_95_t_con, annual_var_95_gumbel_con),
+  CVaR = c(monthly_cvar_95_normal_con, monthly_cvar_95_t_con, monthly_cvar_95_gumbel_con, quarterly_cvar_95_normal_con, quarterly_cvar_95_t_con, quarterly_cvar_95_gumbel_con, annual_cvar_95_normal_con, annual_cvar_95_t_con, annual_cvar_95_gumbel_con)
+)
+
+# Aggressive Portfolio Data
+aggressive_data <- data.frame(
+  Horizon = rep(c("Monthly", "Quarterly", "Annual"), each = 3),
+  Market_Condition = rep(c("Regular", "Stressed", "Crash"), times = 3),
+  VaR = c(monthly_var_95_normal_agg, monthly_var_95_t_agg, monthly_var_95_gumbel_agg, quarterly_var_95_normal_agg, quarterly_var_95_t_agg, quarterly_var_95_gumbel_agg, annual_var_95_normal_agg, annual_var_95_t_agg, annual_var_95_gumbel_agg),
+  CVaR = c(monthly_cvar_95_normal_agg, monthly_cvar_95_t_agg, monthly_cvar_95_gumbel_agg, quarterly_cvar_95_normal_agg, quarterly_cvar_95_t_agg, quarterly_cvar_95_gumbel_agg, annual_cvar_95_normal_agg, annual_cvar_95_t_agg, annual_cvar_95_gumbel_agg)
+)
+
+# Create Combined Data
+conservative_data$Portfolio <- "Conservative"
+aggressive_data$Portfolio <- "Aggressive"
+all_data <- rbind(conservative_data, aggressive_data)
+```
+
+```{r, echo=FALSE, out.height="70%", out.width="70%"}
+# Plot for VaR
+plot_var <- ggplot(all_data, aes(x = Horizon, y = VaR, fill = Market_Condition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Portfolio, scales = "free") +
+  labs(
+    title = "95% Value at Risk (VaR)",
+    x = "Time Horizon",
+    y = "VaR (Negative Values Indicate Loss)",
+    fill = "Market Condition"
+  ) +
+  theme_minimal()
+
+# Print Plots
+print(plot_var)
+```
+
+### Figure 3: CVaR
+
+```{r, echo=FALSE, out.height="70%", out.width="70%"}
+# Plot for CVaR
+plot_cvar <- ggplot(all_data, aes(x = Horizon, y = CVaR, fill = Market_Condition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Portfolio, scales = "free") +
+  labs(
+    title = "95% Conditional Value at Risk (CVaR)",
+    x = "Time Horizon",
+    y = "CVaR (Negative Values Indicate Loss)",
+    fill = "Market Condition"
+  ) +
+  theme_minimal()
+
+# Print Plots
+print(plot_cvar)
+```
+
+## Attribution of Sources
+
+1.  **ChatGPT**: Provided guidance on the application of statistical methods in financial contexts, including Monte Carlo simulations and R libraries related to financial analysis and extreme value theory such as ``quantmod`` and ``evd``. Also assisted in resolving conceptual and computational challenges and ensured grammatical correctness throughout the report.
+
+2.  **Modern Portfolio Theory and Investment Analysis** by Elton, Gruber, Brown, and Goetzmann: A foundational reference on portfolio management, risk-return trade-offs, and asset allocation strategies.
+
+3.  **Risk Management and Financial Institutions** by John Hull: Provided insights into the application of financial risk metrics, including VaR and CVaR, and their practical use in institutional risk management.
+
+4.  **The Analysis of Financial Time Series** by Ruey Tsay: Informed the use of time series methodologies, including return calculation and interpolation techniques, for analyzing financial data.
+
+5.  **Extreme Value Theory as a Risk Management Tool** by Paul Embrechts, Sidney I. Resnick, and Gennady Samorodnitsky: Guided the use of extreme value theory, such as Gumbel distribution, for modeling stressed and crash market conditions.
+
+These sources collectively supported the theoretical and practical components of the analysis.
+
